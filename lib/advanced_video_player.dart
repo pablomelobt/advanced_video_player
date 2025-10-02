@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'fullscreen_video_page.dart';
+import 'picture_in_picture_service.dart';
 
 /// Un reproductor de video avanzado con controles modernos y atractivos
 class AdvancedVideoPlayer extends StatefulWidget {
@@ -23,6 +24,9 @@ class AdvancedVideoPlayer extends StatefulWidget {
   /// Duración en segundos para retroceder/avanzar (default: 10)
   final int skipDuration;
 
+  /// Si es true, habilita el botón de Picture-in-Picture (default: true)
+  final bool enablePictureInPicture;
+
   /// Color principal del reproductor
   final Color primaryColor;
 
@@ -36,6 +40,7 @@ class AdvancedVideoPlayer extends StatefulWidget {
     this.onVideoEnd,
     this.onError,
     this.skipDuration = 10,
+    this.enablePictureInPicture = true,
     this.primaryColor = const Color(0xFF6366F1),
     this.secondaryColor = const Color(0xFF8B5CF6),
   });
@@ -53,6 +58,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   bool _hasError = false;
   String _errorMessage = '';
   final bool _isFullscreen = false;
+  bool _isPictureInPictureSupported = false;
 
   late AnimationController _controlsAnimationController;
   late Animation<double> _controlsAnimation;
@@ -64,6 +70,18 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     super.initState();
     _initializeVideoPlayer();
     _setupAnimations();
+    _checkPictureInPictureSupport();
+  }
+
+  void _checkPictureInPictureSupport() async {
+    final supported =
+        await PictureInPictureService.isPictureInPictureSupported();
+    debugPrint('Picture-in-Picture support check: $supported');
+    if (mounted) {
+      setState(() {
+        _isPictureInPictureSupported = supported;
+      });
+    }
   }
 
   void _setupAnimations() {
@@ -216,12 +234,69 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             primaryColor: widget.primaryColor,
             secondaryColor: widget.secondaryColor,
             skipDuration: widget.skipDuration,
+            enablePictureInPicture: widget.enablePictureInPicture,
           ),
           fullscreenDialog: true,
         ),
       );
     }
     _showControlsTemporarily();
+  }
+
+  void _enterPictureInPicture() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    if (!_isPictureInPictureSupported) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Picture-in-Picture no es compatible con este dispositivo'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final aspectRatio = _controller!.value.aspectRatio;
+      const width = 300.0;
+      final height = width / aspectRatio;
+
+      final success = await PictureInPictureService.enterPictureInPictureMode(
+        width: width,
+        height: height,
+      );
+
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Picture-in-Picture activado'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se pudo activar Picture-in-Picture'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al activar Picture-in-Picture: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   void _showControlsTemporarily() {
@@ -552,6 +627,13 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          if (widget.enablePictureInPicture)
+            _buildControlButton(
+              icon: Icons.picture_in_picture_alt,
+              onPressed: _enterPictureInPicture,
+              tooltip: 'Picture-in-Picture',
+            ),
+          const SizedBox(width: 8),
           _buildControlButton(
             icon: _isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
             onPressed: _toggleFullscreen,
