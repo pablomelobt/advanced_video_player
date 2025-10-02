@@ -2,7 +2,7 @@ group 'com.example.advanced_video_player'
 version '1.0-SNAPSHOT'
 
 buildscript {
-    ext.kotlin_version = '1.7.10'
+    ext.kotlin_version = '1.8.0'
     repositories {
         google()
         mavenCentral()
@@ -47,5 +47,12 @@ android {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    
+    // Google Cast dependencies
+    implementation 'com.google.android.gms:play-services-cast-framework:21.4.0'
+    implementation 'com.google.android.gms:play-services-cast:21.4.0'
+    
+    // Google Guava for ImmutableList
+    implementation 'com.google.guava:guava:31.1-android'
 }

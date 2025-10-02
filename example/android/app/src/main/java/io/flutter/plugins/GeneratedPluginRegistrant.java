@@ -16,9 +16,14 @@ public final class GeneratedPluginRegistrant {
   private static final String TAG = "GeneratedPluginRegistrant";
   public static void registerWith(@NonNull FlutterEngine flutterEngine) {
     try {
-      flutterEngine.getPlugins().add(new com.example.advanced_video_player.PictureInPicturePlugin());
+      flutterEngine.getPlugins().add(new com.example.advanced_video_player.AdvancedVideoPlayerPlugin());
     } catch (Exception e) {
-      Log.e(TAG, "Error registering plugin advanced_video_player, com.example.advanced_video_player.PictureInPicturePlugin", e);
+      Log.e(TAG, "Error registering plugin advanced_video_player, com.example.advanced_video_player.AdvancedVideoPlayerPlugin", e);
+    }
+    try {
+      flutterEngine.getPlugins().add(new io.flutter.plugins.urllauncher.UrlLauncherPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin url_launcher_android, io.flutter.plugins.urllauncher.UrlLauncherPlugin", e);
     }
     try {
       flutterEngine.getPlugins().add(new io.flutter.plugins.videoplayer.VideoPlayerPlugin());

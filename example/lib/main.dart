@@ -96,10 +96,14 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                     ),
                   );
                 },
-                primaryColor: const Color(0xFF6366F1),
-                secondaryColor: const Color(0xFF8B5CF6),
-                skipDuration: 5,
+                primaryColor: const Color(0xFFE7662B),
+                secondaryColor: const Color(0xFFED8C60),
+                skipDuration: 10,
                 enablePictureInPicture: true,
+                enableScreenSharing: true,
+                videoTitle: 'Big Buck Bunny - Demostración',
+                videoDescription:
+                    'Un video de demostración para probar el reproductor avanzado con funcionalidades de compartir pantalla',
               ),
             ),
 
@@ -120,7 +124,7 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
               icon: Icons.play_circle_filled,
               title: 'Controles Intuitivos',
               description:
-                  'Play/Pause, retroceder 5s, avanzar 5s, pantalla completa y Picture-in-Picture',
+                  'Play/Pause, retroceder 10s, avanzar 10s, pantalla completa y Picture-in-Picture',
               color: const Color(0xFF6366F1),
             ),
 
@@ -164,6 +168,16 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
               color: const Color(0xFFEC4899),
             ),
 
+            const SizedBox(height: 16),
+
+            _buildFeatureCard(
+              icon: Icons.cast,
+              title: 'Compartir Pantalla',
+              description:
+                  'Comparte videos con otros dispositivos usando SharePlay (iOS) o Google Cast (Android)',
+              color: const Color(0xFF06B6D4),
+            ),
+
             const SizedBox(height: 40),
 
             // Información adicional
@@ -201,6 +215,29 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Nuevas funcionalidades:',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Text(
+                    '• SharePlay para iOS (compartir en tiempo real)',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const Text(
+                    '• Google Cast para Android (Chromecast)',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
                     ),
                   ),
                   const SizedBox(height: 16),
