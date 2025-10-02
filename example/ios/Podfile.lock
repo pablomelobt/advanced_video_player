@@ -2,6 +2,8 @@ PODS:
   - advanced_video_player (0.0.1):
     - Flutter
   - Flutter (1.0.0)
+  - url_launcher_ios (0.0.1):
+    - Flutter
   - video_player_avfoundation (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -9,6 +11,7 @@ PODS:
 DEPENDENCIES:
   - advanced_video_player (from `.symlinks/plugins/advanced_video_player/ios`)
   - Flutter (from `Flutter`)
+  - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
   - video_player_avfoundation (from `.symlinks/plugins/video_player_avfoundation/darwin`)
 
 EXTERNAL SOURCES:
@@ -16,14 +19,17 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/advanced_video_player/ios"
   Flutter:
     :path: Flutter
+  url_launcher_ios:
+    :path: ".symlinks/plugins/url_launcher_ios/ios"
   video_player_avfoundation:
     :path: ".symlinks/plugins/video_player_avfoundation/darwin"
 
 SPEC CHECKSUMS:
   advanced_video_player: 51659366a1dcb28902d9d4d7c832a42d489f1f1a
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
+  url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
   video_player_avfoundation: 2cef49524dd1f16c5300b9cd6efd9611ce03639b
 
-PODFILE CHECKSUM: 819463e6a0290f5a72f145ba7cde16e8b6ef0796
+PODFILE CHECKSUM: a57f30d18f102dd3ce366b1d62a55ecbef2158e5
 
 COCOAPODS: 1.16.2

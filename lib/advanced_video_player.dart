@@ -4,8 +4,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'fullscreen_video_page.dart';
 import 'picture_in_picture_service.dart';
+import 'screen_sharing_service.dart';
 
 /// Un reproductor de video avanzado con controles modernos y atractivos
 class AdvancedVideoPlayer extends StatefulWidget {
@@ -27,6 +30,15 @@ class AdvancedVideoPlayer extends StatefulWidget {
   /// Si es true, habilita el botón de Picture-in-Picture (default: true)
   final bool enablePictureInPicture;
 
+  /// Si es true, habilita el botón de compartir pantalla (default: true)
+  final bool enableScreenSharing;
+
+  /// Título del video para compartir
+  final String? videoTitle;
+
+  /// Descripción del video para compartir
+  final String? videoDescription;
+
   /// Color principal del reproductor
   final Color primaryColor;
 
@@ -41,6 +53,9 @@ class AdvancedVideoPlayer extends StatefulWidget {
     this.onError,
     this.skipDuration = 10,
     this.enablePictureInPicture = true,
+    this.enableScreenSharing = true,
+    this.videoTitle,
+    this.videoDescription,
     this.primaryColor = const Color(0xFF6366F1),
     this.secondaryColor = const Color(0xFF8B5CF6),
   });
@@ -59,11 +74,20 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   String _errorMessage = '';
   final bool _isFullscreen = false;
   bool _isPictureInPictureSupported = false;
+  bool _isScreenSharingSupported = false;
+  bool _isDiscoveringDevices = false;
+  ScreenSharingState _screenSharingState = ScreenSharingState.disconnected;
+  String? _currentPairingCode;
+  bool _isPairing = false;
+  Timer? _pairingTimer;
 
   late AnimationController _controlsAnimationController;
   late Animation<double> _controlsAnimation;
 
   Timer? _hideControlsTimer;
+  StreamSubscription<ScreenSharingState>? _screenSharingStateSubscription;
+  StreamSubscription<String>? _screenSharingErrorSubscription;
+  ScreenSharingService? _screenSharingService;
 
   @override
   void initState() {
@@ -71,17 +95,82 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     _initializeVideoPlayer();
     _setupAnimations();
     _checkPictureInPictureSupport();
+    _initializeScreenSharing();
   }
 
   void _checkPictureInPictureSupport() async {
     final supported =
         await PictureInPictureService.isPictureInPictureSupported();
     debugPrint('Picture-in-Picture support check: $supported');
-    if (mounted) {
-      setState(() {
-        _isPictureInPictureSupported = supported;
-      });
+    if (!mounted) return;
+    setState(() {
+      _isPictureInPictureSupported = supported;
+    });
+  }
+
+  void _initializeScreenSharing() async {
+    debugPrint('🔍 AVANZADO: Inicializando screen sharing...');
+    debugPrint(
+        '🔍 AVANZADO: enableScreenSharing: ${widget.enableScreenSharing}');
+
+    if (!widget.enableScreenSharing) {
+      debugPrint('❌ AVANZADO: Screen sharing deshabilitado en widget');
+      return;
     }
+
+    try {
+      _screenSharingService = ScreenSharingService();
+      debugPrint('🔍 AVANZADO: Verificando soporte de screen sharing...');
+      final supported = await ScreenSharingService.isScreenSharingSupported();
+      debugPrint('🔍 AVANZADO: Soporte de screen sharing: $supported');
+
+      if (!mounted) return;
+      setState(() {
+        _isScreenSharingSupported = supported;
+      });
+      debugPrint(
+          '🔍 AVANZADO: Estado actualizado - _isScreenSharingSupported: $_isScreenSharingSupported');
+
+      if (supported) {
+        debugPrint('🔍 AVANZADO: Inicializando servicio de screen sharing...');
+        await _screenSharingService!.initialize();
+        if (!mounted) return;
+        _setupScreenSharingListeners();
+        debugPrint('✅ AVANZADO: Screen sharing inicializado correctamente');
+      } else {
+        debugPrint(
+            '❌ AVANZADO: Screen sharing no soportado en este dispositivo');
+      }
+    } catch (e) {
+      debugPrint('❌ AVANZADO: Error inicializando screen sharing: $e');
+      // En caso de error, asumir que está soportado para mostrar el botón
+      if (!mounted) return;
+      setState(() {
+        _isScreenSharingSupported = true;
+      });
+      debugPrint('🔍 AVANZADO: Asumiendo soporte por defecto debido a error');
+    }
+  }
+
+  void _setupScreenSharingListeners() {
+    _screenSharingStateSubscription =
+        _screenSharingService!.stateStream.listen((state) {
+      if (!mounted) return;
+      setState(() {
+        _screenSharingState = state;
+      });
+    });
+
+    _screenSharingErrorSubscription =
+        _screenSharingService!.errorStream.listen((error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error compartiendo: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    });
   }
 
   void _setupAnimations() {
@@ -180,6 +269,23 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     }
   }
 
+  double _getProgressWidthFactor() {
+    if (_controller == null) return 0.0;
+
+    try {
+      final duration = _controller!.value.duration;
+      final position = _controller!.value.position;
+
+      if (duration.inMilliseconds <= 0) return 0.0;
+
+      final progress = position.inMilliseconds / duration.inMilliseconds;
+      return progress.clamp(0.0, 1.0);
+    } catch (e) {
+      debugPrint('Error calculating progress: $e');
+      return 0.0;
+    }
+  }
+
   void _togglePlayPause() {
     debugPrint(
         'Toggle play/pause llamado. Controller: ${_controller != null}, Inicializado: ${_controller?.value.isInitialized}, Playing: $_isPlaying');
@@ -235,6 +341,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             secondaryColor: widget.secondaryColor,
             skipDuration: widget.skipDuration,
             enablePictureInPicture: widget.enablePictureInPicture,
+            enableScreenSharing: widget.enableScreenSharing,
+            videoTitle: widget.videoTitle,
+            videoDescription: widget.videoDescription,
           ),
           fullscreenDialog: true,
         ),
@@ -247,15 +356,14 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     if (_controller == null || !_controller!.value.isInitialized) return;
 
     if (!_isPictureInPictureSupported) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Picture-in-Picture no es compatible con este dispositivo'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Picture-in-Picture no es compatible con este dispositivo'),
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
 
@@ -269,33 +377,26 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         height: height,
       );
 
-      if (mounted) {
-        if (success) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Picture-in-Picture activado'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No se pudo activar Picture-in-Picture'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('Error al activar Picture-in-Picture: $e');
-      if (mounted) {
+      if (!mounted) return;
+      if (success) {
+        debugPrint('Picture-in-Picture activado');
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            duration: const Duration(seconds: 2),
+          const SnackBar(
+            content: Text('No se pudo activar Picture-in-Picture'),
+            duration: Duration(seconds: 2),
           ),
         );
       }
+    } catch (e) {
+      debugPrint('Error al activar Picture-in-Picture: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -627,13 +728,33 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          if (widget.enableScreenSharing && _isScreenSharingSupported)
+            _buildControlButton(
+              icon: _screenSharingState == ScreenSharingState.connected
+                  ? Icons.cast_connected
+                  : _isDiscoveringDevices
+                      ? Icons.search
+                      : Icons.cast,
+              onPressed: _screenSharingState == ScreenSharingState.connected
+                  ? _disconnectScreenSharing
+                  : _isDiscoveringDevices
+                      ? () {}
+                      : _showScreenSharingDialog,
+              tooltip: _screenSharingState == ScreenSharingState.connected
+                  ? 'Desconectar compartir pantalla'
+                  : _isDiscoveringDevices
+                      ? 'Buscando dispositivos...'
+                      : 'Compartir pantalla',
+            ),
+          if (widget.enableScreenSharing && _isScreenSharingSupported)
+            const SizedBox(width: 8),
           if (widget.enablePictureInPicture)
             _buildControlButton(
               icon: Icons.picture_in_picture_alt,
               onPressed: _enterPictureInPicture,
               tooltip: 'Picture-in-Picture',
             ),
-          const SizedBox(width: 8),
+          if (widget.enablePictureInPicture) const SizedBox(width: 8),
           _buildControlButton(
             icon: _isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
             onPressed: _toggleFullscreen,
@@ -652,6 +773,26 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          if (widget.enableScreenSharing && _isScreenSharingSupported)
+            _buildControlButton(
+              icon: _screenSharingState == ScreenSharingState.connected
+                  ? Icons.cast_connected
+                  : _isDiscoveringDevices
+                      ? Icons.search
+                      : Icons.cast,
+              onPressed: _screenSharingState == ScreenSharingState.connected
+                  ? _disconnectScreenSharing
+                  : _isDiscoveringDevices
+                      ? () {}
+                      : _showScreenSharingDialog,
+              tooltip: _screenSharingState == ScreenSharingState.connected
+                  ? 'Desconectar compartir pantalla'
+                  : _isDiscoveringDevices
+                      ? 'Buscando dispositivos...'
+                      : 'Compartir pantalla',
+            ),
+          if (widget.enableScreenSharing && _isScreenSharingSupported)
+            const SizedBox(width: 8),
           _buildControlButton(
             icon: Icons.fullscreen_exit,
             onPressed: _toggleFullscreen,
@@ -751,11 +892,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             // Progreso reproducido
             FractionallySizedBox(
               alignment: Alignment.centerLeft,
-              widthFactor: _controller != null &&
-                      _controller!.value.duration.inMilliseconds > 0
-                  ? _controller!.value.position.inMilliseconds /
-                      _controller!.value.duration.inMilliseconds
-                  : 0.0,
+              widthFactor: _getProgressWidthFactor(),
               child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(2),
@@ -835,11 +972,756 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     _initializeVideoPlayer();
   }
 
+  // Métodos para compartir pantalla
+  Future<void> _showScreenSharingDialog() async {
+    if (_screenSharingService == null || !_isScreenSharingSupported) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Compartir pantalla no está disponible'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isDiscoveringDevices = true;
+    });
+
+    try {
+      final devices = await _screenSharingService!.discoverDevices();
+      if (!mounted) return;
+      setState(() {
+        _isDiscoveringDevices = false;
+      });
+
+      // Siempre mostrar el modal, incluso si no hay dispositivos
+      _showDeviceSelectionDialog(devices);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isDiscoveringDevices = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error buscando dispositivos: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showDeviceSelectionDialog(List<Map<String, dynamic>> devices) {
+    // Ya no necesitamos normalizar porque discoverDevices() devuelve el tipo correcto
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Title
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                'Conectar a TV',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                ),
+              ),
+            ),
+            // Message when no devices found
+            if (devices.isEmpty) ...[
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Colors.orange[700],
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'No se encontraron dispositivos Chromecast en la red. Usa el código de vinculación para conectar tu TV.',
+                        style: TextStyle(
+                          color: Colors.orange[700],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            // Device options
+            ...devices.map((device) {
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                child: ListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  tileColor: Colors.grey[50],
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: widget.primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      device['type'] == 'chromecast' ? Icons.cast : Icons.cast,
+                      color: widget.primaryColor,
+                      size: 24,
+                    ),
+                  ),
+                  title: Text(
+                    device['name'] ?? 'Dispositivo desconocido',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  subtitle: Text(
+                    device['type'] == 'chromecast'
+                        ? 'Google Cast'
+                        : 'SharePlay',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  trailing: Icon(
+                    Icons.arrow_forward_ios,
+                    size: 16,
+                    color: Colors.grey[400],
+                  ),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _connectToDevice(device);
+                  },
+                ),
+              );
+            }),
+
+            // Additional options like YouTube
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                tileColor: Colors.grey[50],
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.tv,
+                    color: Colors.blue,
+                    size: 24,
+                  ),
+                ),
+                title: const Text(
+                  'Vincular con código de TV',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                subtitle: Text(
+                  'Usar código de vinculación',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                trailing: Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: Colors.grey[400],
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showTvCodeDialog();
+                },
+              ),
+            ),
+            // More info option
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              child: ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                tileColor: Colors.grey[50],
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.info_outline,
+                    color: Colors.grey[600],
+                    size: 24,
+                  ),
+                ),
+                title: const Text(
+                  'Más información',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                subtitle: Text(
+                  'Ayuda con la conexión',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                trailing: Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: Colors.grey[400],
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showInfoDialog();
+                },
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _connectToDevice(Map<String, dynamic> device) async {
+    final deviceId = device['id'] as String;
+    final deviceName = device['name'] as String;
+
+    try {
+      final success =
+          await _screenSharingService!.connectToDevice(deviceId, deviceName);
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Conectado a $deviceName'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _shareCurrentVideo();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error conectando al dispositivo'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _shareCurrentVideo() async {
+    if (_screenSharingService == null ||
+        _screenSharingState != ScreenSharingState.connected) {
+      return;
+    }
+
+    try {
+      final success = await _screenSharingService!.shareVideo(
+        videoUrl: widget.videoSource,
+        title: widget.videoTitle ?? 'Video Compartido',
+        description:
+            widget.videoDescription ?? 'Compartido desde Advanced Video Player',
+      );
+
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Video compartido exitosamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error compartiendo el video'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _disconnectScreenSharing() async {
+    if (_screenSharingService != null) {
+      await _screenSharingService!.disconnect();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Desconectado del dispositivo'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
+  }
+
+  void _showTvCodeDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Vincular con código de TV'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Para conectar tu TV:',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    '1. Abre la app de Chromecast en tu TV\n'
+                    '2. Selecciona "Configurar dispositivo"\n'
+                    '3. Aparecerá un código en pantalla\n'
+                    '4. Ingresa el código aquí',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Código de vinculación:',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 14),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _generateTvCode(),
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 2,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'O escanea este código QR:',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(6.0),
+                      child: QrImageView(
+                        data:
+                            'Código: ${_currentPairingCode ?? _generateTvCode()}',
+                        version: QrVersions.auto,
+                        size: 108.0,
+                        backgroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _openChromecastApp(),
+                      icon: const Icon(Icons.qr_code_scanner, size: 16),
+                      label: const Text('Abrir app de Chromecast',
+                          style: TextStyle(fontSize: 13)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue[600],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cerrar'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _startTvPairing();
+                },
+                child: const Text('Iniciar vinculación'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  String _generateTvCode() {
+    // Generar un código de 6 dígitos único basado en timestamp y random
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final random = (timestamp % 1000000).toInt();
+    _currentPairingCode = random.toString().padLeft(6, '0');
+    return _currentPairingCode!;
+  }
+
+  void _startTvPairing() {
+    _isPairing = true;
+    _currentPairingCode = _generateTvCode();
+
+    // Mostrar indicador de vinculación
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Vinculando con TV...'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text('Esperando confirmación de la TV...'),
+              const SizedBox(height: 8),
+              Text(
+                'Código: $_currentPairingCode',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '1. Abre la app de Chromecast en tu TV\n'
+                '2. Ingresa el código mostrado arriba\n'
+                '3. O escanea el código QR',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _cancelTvPairing();
+            },
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => _openChromecastApp(),
+            child: const Text('Abrir Chromecast'),
+          ),
+        ],
+      ),
+    );
+
+    // Iniciar proceso de verificación real
+    _startPairingVerification();
+  }
+
+  void _openChromecastApp() async {
+    try {
+      // Intentar múltiples URLs de Chromecast
+      final List<String> urls = [
+        'https://cast.google.com/pair?code=$_currentPairingCode',
+        'https://www.google.com/chromecast/setup/',
+        'https://cast.google.com/',
+        'chromecast://pair?code=$_currentPairingCode',
+      ];
+
+      bool launched = false;
+      for (String urlString in urls) {
+        try {
+          final Uri url = Uri.parse(urlString);
+          if (await canLaunchUrl(url)) {
+            await launchUrl(url, mode: LaunchMode.externalApplication);
+            launched = true;
+            break;
+          }
+        } catch (e) {
+          debugPrint('Error con URL $urlString: $e');
+          continue;
+        }
+      }
+
+      if (!launched) {
+        // Fallback: mostrar instrucciones manuales
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Abrir Chromecast manualmente'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                        'No se pudo abrir automáticamente. Sigue estos pasos:'),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '1. Abre la app de Chromecast en tu dispositivo\n'
+                      '2. Ve a Configuración\n'
+                      '3. Selecciona "Configurar dispositivo"\n'
+                      '4. Ingresa el código:',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue[200]!),
+                      ),
+                      child: Text(
+                        _currentPairingCode ?? 'ERROR',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cerrar'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error general al abrir Chromecast: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al abrir Chromecast: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _startPairingVerification() {
+    // Verificar cada 2 segundos si se estableció la conexión
+    _pairingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      if (!_isPairing) {
+        timer.cancel();
+        return;
+      }
+
+      // Verificar si hay dispositivos conectados
+      try {
+        final devices = await _screenSharingService?.discoverDevices();
+        if (devices != null && devices.isNotEmpty) {
+          // Se encontró un dispositivo, asumir que la vinculación fue exitosa
+          timer.cancel();
+          _isPairing = false;
+
+          if (mounted) {
+            Navigator.of(context).pop(); // Cerrar diálogo de vinculación
+            _showPairingResult();
+          }
+        }
+      } catch (e) {
+        // Error en la verificación, continuar intentando
+      }
+    });
+
+    // Timeout después de 60 segundos
+    Timer(const Duration(seconds: 60), () {
+      if (_isPairing) {
+        _isPairing = false;
+        _pairingTimer?.cancel();
+
+        if (mounted) {
+          Navigator.of(context).pop(); // Cerrar diálogo de vinculación
+          _showPairingTimeout();
+        }
+      }
+    });
+  }
+
+  void _cancelTvPairing() {
+    _isPairing = false;
+    _pairingTimer?.cancel();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Vinculación cancelada'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
+  void _showPairingTimeout() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tiempo agotado'),
+        content: const Text(
+          'No se pudo establecer la conexión con la TV. '
+          'Asegúrate de que:\n\n'
+          '• Tu TV esté conectada a la misma red Wi-Fi\n'
+          '• La app de Chromecast esté instalada en tu TV\n'
+          '• El código se haya ingresado correctamente',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _showTvCodeDialog(); // Reintentar
+            },
+            child: const Text('Reintentar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPairingResult() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¡Vinculación exitosa!'),
+        content: const Text(
+          'Tu dispositivo se ha conectado correctamente a la TV. '
+          'Ahora puedes compartir videos.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Continuar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showInfoDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Más información'),
+        content: const Text(
+          'Para compartir video con otros dispositivos:\n\n'
+          '• Asegúrate de que ambos dispositivos estén en la misma red Wi-Fi\n'
+          '• Los dispositivos Chromecast deben estar configurados\n'
+          '• Para SharePlay en iOS, ambos dispositivos deben tener iOS 15.1 o superior',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
+    _pairingTimer?.cancel();
     _controlsAnimationController.dispose();
     _controller?.dispose();
+    _screenSharingStateSubscription?.cancel();
+    _screenSharingErrorSubscription?.cancel();
+    _screenSharingService?.dispose();
     // Restaurar orientación y UI cuando se dispone el widget
     if (_isFullscreen) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

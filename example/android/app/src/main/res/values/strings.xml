@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Google Cast App ID - usar el ID por defecto para testing -->
+    <string name="cast_app_id">CC1AD845</string>
+</resources>
