@@ -2,12 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'picture_in_picture_service.dart';
 
 class FullscreenVideoPage extends StatefulWidget {
   final VideoPlayerController controller;
   final Color primaryColor;
   final Color secondaryColor;
   final int skipDuration;
+  final bool enablePictureInPicture;
 
   const FullscreenVideoPage({
     super.key,
@@ -15,6 +17,7 @@ class FullscreenVideoPage extends StatefulWidget {
     required this.primaryColor,
     required this.secondaryColor,
     required this.skipDuration,
+    this.enablePictureInPicture = true,
   });
 
   @override
@@ -25,6 +28,7 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     with TickerProviderStateMixin {
   bool _showControls = true;
   bool _isPlaying = false;
+  bool _isPictureInPictureSupported = false;
   late AnimationController _controlsAnimationController;
   late Animation<double> _controlsAnimation;
   Timer? _hideControlsTimer;
@@ -35,6 +39,17 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     _setupFullscreen();
     _setupAnimations();
     _setupVideoListener();
+    _checkPictureInPictureSupport();
+  }
+
+  void _checkPictureInPictureSupport() async {
+    final supported =
+        await PictureInPictureService.isPictureInPictureSupported();
+    if (mounted) {
+      setState(() {
+        _isPictureInPictureSupported = supported;
+      });
+    }
   }
 
   void _setupFullscreen() async {
@@ -106,6 +121,60 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     if (mounted) {
       Navigator.of(context).pop();
+    }
+  }
+
+  void _enterPictureInPicture() async {
+    if (!_isPictureInPictureSupported) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Picture-in-Picture no es compatible con este dispositivo'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final aspectRatio = widget.controller.value.aspectRatio;
+      const width = 300.0;
+      final height = width / aspectRatio;
+
+      final success = await PictureInPictureService.enterPictureInPictureMode(
+        width: width,
+        height: height,
+      );
+
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Picture-in-Picture activado'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se pudo activar Picture-in-Picture'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al activar Picture-in-Picture: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -184,6 +253,28 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
+                              if (widget.enablePictureInPicture)
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.5),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.3),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(
+                                        Icons.picture_in_picture_alt,
+                                        color: Colors.white),
+                                    onPressed: _enterPictureInPicture,
+                                  ),
+                                ),
+                              if (widget.enablePictureInPicture)
+                                const SizedBox(width: 8),
                               Container(
                                 decoration: BoxDecoration(
                                   color: Colors.black.withOpacity(0.5),

@@ -37,7 +37,7 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A1A),
       appBar: AppBar(
-        title: const Text(    
+        title: const Text(
           'Advanced Video Player',
           style: TextStyle(
             color: Colors.white,
@@ -98,7 +98,8 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                 },
                 primaryColor: const Color(0xFF6366F1),
                 secondaryColor: const Color(0xFF8B5CF6),
-                skipDuration: 10,
+                skipDuration: 5,
+                enablePictureInPicture: true,
               ),
             ),
 
@@ -119,7 +120,7 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
               icon: Icons.play_circle_filled,
               title: 'Controles Intuitivos',
               description:
-                  'Play/Pause, retroceder 10s, avanzar 10s y pantalla completa',
+                  'Play/Pause, retroceder 5s, avanzar 5s, pantalla completa y Picture-in-Picture',
               color: const Color(0xFF6366F1),
             ),
 
@@ -151,6 +152,16 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
               description:
                   'Colores personalizables y UI moderna con gradientes',
               color: const Color(0xFFF59E0B),
+            ),
+
+            const SizedBox(height: 16),
+
+            _buildFeatureCard(
+              icon: Icons.picture_in_picture_alt,
+              title: 'Picture-in-Picture',
+              description:
+                  'Ve videos en ventana flotante mientras usas otras apps (Android 8.0+ / iOS 14+)',
+              color: const Color(0xFFEC4899),
             ),
 
             const SizedBox(height: 40),
