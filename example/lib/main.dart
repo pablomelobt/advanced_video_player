@@ -37,7 +37,7 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A1A),
       appBar: AppBar(
-        title: const Text(
+        title: const Text(    
           'Advanced Video Player',
           style: TextStyle(
             color: Colors.white,
