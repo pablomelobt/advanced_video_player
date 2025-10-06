@@ -119,6 +119,7 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                 skipDuration: 10,
                 enablePictureInPicture: true,
                 enableScreenSharing: true,
+                enableAirPlay: true,
                 videoTitle: 'Big Buck Bunny - Demostración',
                 videoDescription:
                     'Un video de demostración para probar el reproductor avanzado con funcionalidades de compartir pantalla',
@@ -194,6 +195,16 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
               description:
                   'Comparte videos con otros dispositivos usando SharePlay (iOS) o Google Cast (Android)',
               color: const Color(0xFF06B6D4),
+            ),
+
+            const SizedBox(height: 16),
+
+            _buildFeatureCard(
+              icon: Icons.airplay,
+              title: 'AirPlay (iOS)',
+              description:
+                  'Reproduce videos en Apple TV y otros dispositivos compatibles con AirPlay',
+              color: const Color(0xFF8B5CF6),
             ),
 
             const SizedBox(height: 40),

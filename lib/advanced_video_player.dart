@@ -1,6 +1,7 @@
 library advanced_video_player;
 
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -10,7 +11,6 @@ import 'fullscreen_video_page.dart';
 import 'picture_in_picture_service.dart';
 import 'screen_sharing_service.dart';
 import 'airplay_button.dart';
-import 'widgets/cast_button.dart';
 
 /// Un reproductor de video avanzado con controles modernos y atractivos
 class AdvancedVideoPlayer extends StatefulWidget {
@@ -83,6 +83,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   bool _isScreenSharingSupported = false;
   bool _isAirPlaySupported = false;
   bool _isDiscoveringDevices = false;
+  bool _isAirPlayActive = false;
   bool _isInPictureInPictureMode = false;
   // bool _isAirPlayActive = false; // Removed unused field
   ScreenSharingState _screenSharingState = ScreenSharingState.disconnected;
@@ -105,6 +106,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     _setupAnimations();
     _checkPictureInPictureSupport();
     _initializeScreenSharing();
+    _initializeAirPlay();
     _setupPictureInPictureListener();
   }
 
@@ -122,7 +124,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     debugPrint('🔍 PICTURE-IN-PICTURE: Soporte detectado: $supported');
 
     // Obtener información de debug en Android
-    if (Theme.of(context).platform == TargetPlatform.android) {
+    if (Platform.isAndroid) {
       try {
         final info = await PictureInPictureService.getPictureInPictureInfo();
         debugPrint('🔍 PICTURE-IN-PICTURE: Información del dispositivo: $info');
@@ -196,7 +198,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     debugPrint('🔍 GOOGLE CAST: Inicializando Google Cast...');
 
     // Google Cast solo está disponible en Android
-    if (Theme.of(context).platform != TargetPlatform.android) {
+    if (!Platform.isAndroid) {
       debugPrint('❌ GOOGLE CAST: Solo disponible en Android');
       return;
     }
@@ -210,7 +212,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   void _castCurrentVideo() async {
-    if (Theme.of(context).platform != TargetPlatform.android) {
+    if (!Platform.isAndroid) {
       return;
     }
 
@@ -246,9 +248,8 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       return;
     }
 
-    // AirPlay solo está disponible en iOS - verificar después de que el widget esté construido
-    if (!mounted) return;
-    if (Theme.of(context).platform != TargetPlatform.iOS) {
+    // AirPlay solo está disponible en iOS
+    if (!Platform.isIOS) {
       debugPrint('❌ AIRPLAY: AirPlay solo disponible en iOS');
       return;
     }
@@ -854,11 +855,8 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     // En modo Picture-in-Picture, no mostrar gradiente
     if (_isInPictureInPictureMode) {
       return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Barra superior (vacía en vista preview)
-          _buildTopBar(),
-          const Spacer(),
-          // Controles centrales simplificados (solo play/pause)
           _buildPreviewCenterControls(),
           const Spacer(),
           // Barra inferior (vacía en vista preview)
@@ -883,38 +881,25 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         ),
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Barra superior (vacía en vista preview)
-          _buildTopBar(),
-          const Spacer(),
-          // Controles centrales simplificados (solo play/pause)
           _buildPreviewCenterControls(),
-          const Spacer(),
-          // Barra inferior (vacía en vista preview)
-          const SizedBox.shrink(),
         ],
       ),
     );
   }
 
   Widget _buildFullscreenControlsOverlay() {
-    // En modo Picture-in-Picture, no mostrar gradiente
     if (_isInPictureInPictureMode) {
       return Column(
         children: [
-          // Barra superior (solo botón de pantalla completa)
-          _buildFullscreenTopBar(),
-          const Spacer(),
-          // Controles centrales
-          _buildCenterControls(),
-          const Spacer(),
-          // Barra inferior
-          _buildBottomBar(),
+          Center(
+            child: _buildCenterControls(),
+          ),
         ],
       );
     }
 
-    // Vista normal con gradiente
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -944,36 +929,29 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     );
   }
 
-  Widget _buildTopBar() {
-    // En la vista preview, no mostrar botones adicionales
-    // Solo se muestran en pantalla completa
-    return const SizedBox.shrink();
-  }
-
   Widget _buildFullscreenTopBar() {
     return Container(
       padding: const EdgeInsets.all(16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // Botón de Google Cast (solo Android)
-          if (Theme.of(context).platform == TargetPlatform.android)
-            const CastButton(width: 32, height: 32),
-          if (Theme.of(context).platform == TargetPlatform.android)
-            const SizedBox(width: 8),
           if (widget.enableAirPlay && _isAirPlaySupported)
             AirPlayStatusButton(
-              width: 32,
-              height: 32,
+              width: 20,
+              height: 20,
               onAirPlayStateChanged: (isActive) {
                 if (mounted) {
-                  setState(() {});
+                  setState(() {
+                    _isAirPlayActive = isActive;
+                  });
                 }
               },
             ),
-          if (widget.enableAirPlay && _isAirPlaySupported)
+          if (Platform.isIOS && widget.enableAirPlay && _isAirPlaySupported)
             const SizedBox(width: 8),
-          if (widget.enableScreenSharing && _isScreenSharingSupported)
+          if (Platform.isAndroid &&
+              widget.enableScreenSharing &&
+              _isScreenSharingSupported)
             _buildControlButton(
               icon: _screenSharingState == ScreenSharingState.connected
                   ? Icons.cast_connected
@@ -990,6 +968,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
                   : _isDiscoveringDevices
                       ? 'Buscando dispositivos...'
                       : 'Compartir pantalla',
+              size: 40,
               isPictureInPicture: _isInPictureInPictureMode,
             ),
           if (widget.enableScreenSharing && _isScreenSharingSupported)
@@ -999,6 +978,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
               icon: Icons.picture_in_picture_alt,
               onPressed: _enterPictureInPicture,
               tooltip: 'Picture-in-Picture',
+              size: 40,
               isPictureInPicture: _isInPictureInPictureMode,
             ),
           if (widget.enablePictureInPicture) const SizedBox(width: 8),
@@ -1006,6 +986,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             icon: Icons.fullscreen_exit,
             onPressed: _toggleFullscreen,
             tooltip: 'Salir de pantalla completa',
+            size: 40,
             isPictureInPicture: _isInPictureInPictureMode,
           ),
         ],
@@ -1191,7 +1172,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
               : Colors.black.withOpacity(0.4),
           foregroundColor: Colors.white,
           shape: const CircleBorder(),
-          padding: EdgeInsets.all(size * 0.2),
+          // padding: EdgeInsets.all(size * 0.2),
         ),
       ),
     );

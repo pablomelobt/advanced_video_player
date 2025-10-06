@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:advanced_video_player/airplay_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -40,11 +42,15 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
   bool _isPictureInPictureSupported = false;
   bool _isInPictureInPictureMode = false;
   bool _isScreenSharingSupported = false;
+  bool _isAirPlaySupported = false;
+  bool _isAirPlayActive = false;
+  bool _showAirPlayButtons = true;
   ScreenSharingState _screenSharingState = ScreenSharingState.disconnected;
   late AnimationController _controlsAnimationController;
   late Animation<double> _controlsAnimation;
   Timer? _hideControlsTimer;
   Timer? _pipStateTimer;
+  Timer? _hideAirPlayTimer;
   StreamSubscription<bool>? _pipModeSubscription;
   StreamSubscription<ScreenSharingState>? _screenSharingStateSubscription;
   StreamSubscription<String>? _screenSharingErrorSubscription;
@@ -59,6 +65,8 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     _checkPictureInPictureSupport();
     _setupPictureInPictureListener();
     _initializeScreenSharing();
+    _initializeAirPlay();
+    _startAirPlayTimer();
   }
 
   void _checkPictureInPictureSupport() async {
@@ -137,6 +145,37 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     } catch (e) {
       debugPrint('❌ Error inicializando screen sharing: $e');
     }
+  }
+
+  void _initializeAirPlay() async {
+    if (!widget.enableAirPlay) return;
+    if (!Platform.isIOS) return;
+
+    try {
+      const channel = MethodChannel('advanced_video_player');
+      final isActive = await channel.invokeMethod('isAirPlayActive') ?? false;
+      if (!mounted) return;
+      setState(() {
+        _isAirPlaySupported = true;
+        _isAirPlayActive = isActive;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isAirPlaySupported = true;
+      });
+    }
+  }
+
+  void _startAirPlayTimer() {
+    // Ocultar botones de AirPlay después de 2 segundos
+    _hideAirPlayTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _showAirPlayButtons = false;
+        });
+      }
+    });
   }
 
   void _setupScreenSharingListeners() {
@@ -288,7 +327,7 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     _controlsAnimationController.forward();
 
     _hideControlsTimer?.cancel();
-    _hideControlsTimer = Timer(const Duration(seconds: 3), () {
+    _hideControlsTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) {
         setState(() {
           _showControls = false;
@@ -362,83 +401,59 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.end,
                                     children: [
-                                      if (widget.enableScreenSharing &&
+                                      if (_showAirPlayButtons &&
+                                          widget.enableAirPlay &&
+                                          _isAirPlaySupported)
+                                        AirPlayStatusButton(
+                                          width: 40,
+                                          height: 40,
+                                          onAirPlayStateChanged: (isActive) {
+                                            if (mounted) {
+                                              setState(() {
+                                                _isAirPlayActive = isActive;
+                                              });
+                                            }
+                                          },
+                                        ),
+                                      if (Platform.isAndroid &&
+                                          widget.enableAirPlay &&
+                                          _isAirPlaySupported)
+                                        const SizedBox(width: 8),
+                                      if (Platform.isAndroid &&
+                                          widget.enableScreenSharing &&
                                           _isScreenSharingSupported)
-                                        Container(
-                                          decoration: BoxDecoration(
-                                            color:
-                                                Colors.black.withOpacity(0.5),
-                                            shape: BoxShape.circle,
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black
-                                                    .withOpacity(0.3),
-                                                blurRadius: 8,
-                                                offset: const Offset(0, 4),
-                                              ),
-                                            ],
-                                          ),
-                                          child: IconButton(
-                                            icon: Icon(
-                                              _screenSharingState ==
-                                                      ScreenSharingState
-                                                          .connected
-                                                  ? Icons.cast_connected
-                                                  : Icons.cast,
-                                              color: Colors.white,
-                                            ),
-                                            onPressed: _screenSharingState ==
-                                                    ScreenSharingState.connected
-                                                ? _disconnectScreenSharing
-                                                : _showScreenSharingDialog,
-                                          ),
+                                        _buildControlButton(
+                                          icon: _screenSharingState ==
+                                                  ScreenSharingState.connected
+                                              ? Icons.cast_connected
+                                              : Icons.cast,
+                                          onPressed: _screenSharingState ==
+                                                  ScreenSharingState.connected
+                                              ? _disconnectScreenSharing
+                                              : _showScreenSharingDialog,
+                                          tooltip: _screenSharingState ==
+                                                  ScreenSharingState.connected
+                                              ? 'Desconectar compartir pantalla'
+                                              : 'Compartir pantalla',
+                                          size: 40,
                                         ),
                                       if (widget.enableScreenSharing &&
                                           _isScreenSharingSupported)
                                         const SizedBox(width: 8),
                                       if (widget.enablePictureInPicture)
-                                        Container(
-                                          decoration: BoxDecoration(
-                                            color:
-                                                Colors.black.withOpacity(0.5),
-                                            shape: BoxShape.circle,
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black
-                                                    .withOpacity(0.3),
-                                                blurRadius: 8,
-                                                offset: const Offset(0, 4),
-                                              ),
-                                            ],
-                                          ),
-                                          child: IconButton(
-                                            icon: const Icon(
-                                                Icons.picture_in_picture_alt,
-                                                color: Colors.white),
-                                            onPressed: _enterPictureInPicture,
-                                          ),
+                                        _buildControlButton(
+                                          icon: Icons.picture_in_picture_alt,
+                                          onPressed: _enterPictureInPicture,
+                                          tooltip: 'Picture-in-Picture',
+                                          size: 40,
                                         ),
                                       if (widget.enablePictureInPicture)
                                         const SizedBox(width: 8),
-                                      Container(
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withOpacity(0.5),
-                                          shape: BoxShape.circle,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color:
-                                                  Colors.black.withOpacity(0.3),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: IconButton(
-                                          icon: const Icon(
-                                              Icons.fullscreen_exit,
-                                              color: Colors.white),
-                                          onPressed: _exitFullscreen,
-                                        ),
+                                      _buildControlButton(
+                                        icon: Icons.fullscreen_exit,
+                                        onPressed: _exitFullscreen,
+                                        tooltip: 'Salir de pantalla completa',
+                                        size: 40,
                                       ),
                                     ],
                                   ),
@@ -454,7 +469,8 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                                       onPressed: _skipBackward,
                                       tooltip:
                                           'Retroceder ${widget.skipDuration}s',
-                                      size: 40,
+                                      size: 45,
+                                      iconSize: 40,
                                     ),
                                     _buildControlButton(
                                       icon: _isPlaying
@@ -463,14 +479,16 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                                       onPressed: _togglePlayPause,
                                       tooltip:
                                           _isPlaying ? 'Pausar' : 'Reproducir',
-                                      size: 60,
+                                      size: 65,
+                                      iconSize: 60,
                                     ),
                                     _buildControlButton(
                                       icon: Icons.forward_10,
                                       onPressed: _skipForward,
                                       tooltip:
                                           'Avanzar ${widget.skipDuration}s',
-                                      size: 40,
+                                      size: 45,
+                                      iconSize: 40,
                                     ),
                                   ],
                                 ),
@@ -480,7 +498,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                                   padding: const EdgeInsets.all(16),
                                   child: Column(
                                     children: [
-                                      // Barra de progreso
                                       LayoutBuilder(
                                         builder: (layoutContext, constraints) {
                                           final width = constraints.maxWidth;
@@ -656,7 +673,8 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
             icon: Icons.replay_10,
             onPressed: _skipBackward,
             tooltip: 'Retroceder ${widget.skipDuration}s',
-            size: 32,
+            size: 45,
+            iconSize: 40,
           ),
           const SizedBox(width: 16),
           _buildControlButton(
@@ -665,14 +683,16 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                 : Icons.play_circle_filled,
             onPressed: _togglePlayPause,
             tooltip: _isPlaying ? 'Pausar' : 'Reproducir',
-            size: 48,
+            size: 65,
+            iconSize: 60,
           ),
           const SizedBox(width: 16),
           _buildControlButton(
             icon: Icons.forward_10,
             onPressed: _skipForward,
             tooltip: 'Avanzar ${widget.skipDuration}s',
-            size: 32,
+            size: 45,
+            iconSize: 40,
           ),
         ],
       ),
@@ -684,28 +704,32 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     required VoidCallback onPressed,
     required String tooltip,
     double size = 32,
+    double iconSize = 20,
   }) {
     return Tooltip(
       message: tooltip,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.5),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: IconButton(
-          icon: Icon(
+      child: GestureDetector(
+        onTap: onPressed,
+        child: Container(
+          alignment: Alignment.center,
+          height: size,
+          width: size,
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.5),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(
             icon,
-            size: size,
+            size: iconSize,
             color: Colors.white,
           ),
-          onPressed: onPressed,
         ),
       ),
     );
@@ -1078,6 +1102,7 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
   void dispose() {
     _hideControlsTimer?.cancel();
     _pipStateTimer?.cancel();
+    _hideAirPlayTimer?.cancel();
     _controlsAnimationController.dispose();
     _pipModeSubscription?.cancel();
     _screenSharingStateSubscription?.cancel();

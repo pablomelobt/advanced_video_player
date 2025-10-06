@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -23,7 +24,7 @@ class AirPlayButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Solo mostrar en iOS
-    if (!(Theme.of(context).platform == TargetPlatform.iOS)) {
+    if (!Platform.isIOS) {
       return const SizedBox.shrink();
     }
 
@@ -113,7 +114,7 @@ class _AirPlayStatusButtonState extends State<AirPlayStatusButton> {
   @override
   Widget build(BuildContext context) {
     // Solo mostrar en iOS
-    if (Theme.of(context).platform != TargetPlatform.iOS) {
+    if (!Platform.isIOS) {
       return const SizedBox.shrink();
     }
 
