@@ -13,6 +13,7 @@ class PictureInPictureService {
     try {
       final bool supported =
           await _channel.invokeMethod('isPictureInPictureSupported');
+      debugPrint('Picture-in-Picture support check result: $supported');
       return supported;
     } catch (e) {
       debugPrint('Error checking PiP support: $e');
@@ -26,11 +27,14 @@ class PictureInPictureService {
     required double height,
   }) async {
     try {
+      debugPrint(
+          'Attempting to enter Picture-in-Picture mode with size: ${width}x${height}');
       final bool success =
           await _channel.invokeMethod('enterPictureInPictureMode', {
         'width': width,
         'height': height,
       });
+      debugPrint('Picture-in-Picture mode result: $success');
       return success;
     } catch (e) {
       debugPrint('Error entering PiP mode: $e');
@@ -59,6 +63,18 @@ class PictureInPictureService {
     } catch (e) {
       debugPrint('Error checking PiP mode: $e');
       return false;
+    }
+  }
+
+  /// Obtiene información de debug sobre el soporte de Picture-in-Picture
+  static Future<Map<String, dynamic>> getPictureInPictureInfo() async {
+    try {
+      final Map<dynamic, dynamic> info =
+          await _channel.invokeMethod('getPictureInPictureInfo');
+      return Map<String, dynamic>.from(info);
+    } catch (e) {
+      debugPrint('Error getting PiP info: $e');
+      return {};
     }
   }
 

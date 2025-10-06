@@ -25,5 +25,10 @@ public final class GeneratedPluginRegistrant {
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin advanced_video_player, com.example.advanced_video_player.AdvancedVideoPlayerPlugin", e);
     }
+    try {
+      flutterEngine.getPlugins().add(new com.example.advanced_video_player.PictureInPicturePlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin picture_in_picture, com.example.advanced_video_player.PictureInPicturePlugin", e);
+    }
   }
 }

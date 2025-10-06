@@ -82,7 +82,8 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   bool _isScreenSharingSupported = false;
   bool _isAirPlaySupported = false;
   bool _isDiscoveringDevices = false;
-  bool _isAirPlayActive = false;
+  bool _isInPictureInPictureMode = false;
+  // bool _isAirPlayActive = false; // Removed unused field
   ScreenSharingState _screenSharingState = ScreenSharingState.disconnected;
   String? _currentPairingCode;
   bool _isPairing = false;
@@ -103,16 +104,45 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     _setupAnimations();
     _checkPictureInPictureSupport();
     _initializeScreenSharing();
+    _setupPictureInPictureListener();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     _initializeAirPlay();
   }
 
   void _checkPictureInPictureSupport() async {
+    debugPrint('🔍 PICTURE-IN-PICTURE: Verificando soporte...');
     final supported =
         await PictureInPictureService.isPictureInPictureSupported();
-    debugPrint('Picture-in-Picture support check: $supported');
+    debugPrint('🔍 PICTURE-IN-PICTURE: Soporte detectado: $supported');
+
+    // Obtener información de debug en Android
+    if (Theme.of(context).platform == TargetPlatform.android) {
+      try {
+        final info = await PictureInPictureService.getPictureInPictureInfo();
+        debugPrint('🔍 PICTURE-IN-PICTURE: Información del dispositivo: $info');
+      } catch (e) {
+        debugPrint('🔍 PICTURE-IN-PICTURE: Error obteniendo info: $e');
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _isPictureInPictureSupported = supported;
+    });
+  }
+
+  void _setupPictureInPictureListener() {
+    // Escuchar cambios en el estado de Picture-in-Picture
+    PictureInPictureService.pictureInPictureModeStream.listen((isInPip) {
+      if (!mounted) return;
+      setState(() {
+        _isInPictureInPictureMode = isInPip;
+      });
+      debugPrint('🔍 PICTURE-IN-PICTURE: Estado cambiado: $isInPip');
     });
   }
 
@@ -169,7 +199,8 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       return;
     }
 
-    // AirPlay solo está disponible en iOS
+    // AirPlay solo está disponible en iOS - verificar después de que el widget esté construido
+    if (!mounted) return;
     if (Theme.of(context).platform != TargetPlatform.iOS) {
       debugPrint('❌ AIRPLAY: AirPlay solo disponible en iOS');
       return;
@@ -178,12 +209,12 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     try {
       // Verificar si AirPlay está disponible
       const channel = MethodChannel('advanced_video_player');
-      final isActive = await channel.invokeMethod('isAirPlayActive') ?? false;
+      await channel.invokeMethod('isAirPlayActive') ?? false;
 
       if (!mounted) return;
       setState(() {
         _isAirPlaySupported = true;
-        _isAirPlayActive = isActive;
+        // _isAirPlayActive = isActive; // Removed unused field
       });
       debugPrint('✅ AIRPLAY: AirPlay inicializado correctamente');
     } catch (e) {
@@ -341,6 +372,16 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       return;
     }
 
+    // Si estamos en vista preview (no en pantalla completa) y el video no está reproduciéndose
+    if (!_isFullscreen && !_isPlaying) {
+      debugPrint(
+          '🎬 VISTA PREVIEW: Play presionado - Entrando en pantalla completa y reproduciendo');
+      // Entrar en pantalla completa y reproducir automáticamente
+      _enterFullscreenAndPlay();
+      return;
+    }
+
+    // Comportamiento normal para pausar o cuando ya estamos en pantalla completa
     setState(() {
       if (_isPlaying) {
         debugPrint('Pausando video...');
@@ -398,10 +439,44 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     _showControlsTemporarily();
   }
 
+  void _enterFullscreenAndPlay() async {
+    debugPrint('🎬 ENTRANDO EN PANTALLA COMPLETA Y REPRODUCIENDO...');
+
+    // Primero reproducir el video
+    setState(() {
+      _isPlaying = true;
+    });
+    _controller!.play();
+
+    // Luego entrar en pantalla completa
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullscreenVideoPage(
+          controller: _controller!,
+          primaryColor: widget.primaryColor,
+          secondaryColor: widget.secondaryColor,
+          skipDuration: widget.skipDuration,
+          enablePictureInPicture: widget.enablePictureInPicture,
+          enableScreenSharing: widget.enableScreenSharing,
+          enableAirPlay: widget.enableAirPlay,
+          videoTitle: widget.videoTitle,
+          videoDescription: widget.videoDescription,
+        ),
+        fullscreenDialog: true,
+      ),
+    );
+
+    debugPrint('✅ PANTALLA COMPLETA ACTIVADA Y VIDEO REPRODUCIÉNDOSE');
+  }
+
   void _enterPictureInPicture() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
+    if (_controller == null || !_controller!.value.isInitialized) {
+      debugPrint('❌ PICTURE-IN-PICTURE: Controller no inicializado');
+      return;
+    }
 
     if (!_isPictureInPictureSupported) {
+      debugPrint('❌ PICTURE-IN-PICTURE: No soportado en este dispositivo');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -415,8 +490,15 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
     try {
       final aspectRatio = _controller!.value.aspectRatio;
-      const width = 300.0;
+      // Usar dimensiones más apropiadas para PiP de video
+      const width = 400.0;
       final height = width / aspectRatio;
+
+      debugPrint('🔍 PICTURE-IN-PICTURE: Aspect ratio: $aspectRatio');
+      debugPrint(
+          '🔍 PICTURE-IN-PICTURE: Dimensiones calculadas: ${width}x${height}');
+      debugPrint(
+          '🔍 PICTURE-IN-PICTURE: Entrando en modo PiP - solo se mostrará el video');
 
       final success = await PictureInPictureService.enterPictureInPictureMode(
         width: width,
@@ -425,22 +507,34 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
       if (!mounted) return;
       if (success) {
-        debugPrint('Picture-in-Picture activado');
+        debugPrint('✅ PICTURE-IN-PICTURE: Activado exitosamente');
+        debugPrint(
+            '📱 PICTURE-IN-PICTURE: La ventana flotante mostrará solo el video');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Picture-in-Picture activado - Solo video visible'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.green,
+          ),
+        );
       } else {
+        debugPrint('❌ PICTURE-IN-PICTURE: No se pudo activar');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('No se pudo activar Picture-in-Picture'),
             duration: Duration(seconds: 2),
+            backgroundColor: Colors.red,
           ),
         );
       }
     } catch (e) {
-      debugPrint('Error al activar Picture-in-Picture: $e');
+      debugPrint('❌ PICTURE-IN-PICTURE: Error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: $e'),
           duration: const Duration(seconds: 2),
+          backgroundColor: Colors.red,
         ),
       );
     }
@@ -544,6 +638,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
                       icon: Icons.fullscreen_exit,
                       onPressed: _toggleFullscreen,
                       tooltip: 'Salir de pantalla completa',
+                      isPictureInPicture: _isInPictureInPictureMode,
                     ),
                   );
                 },
@@ -709,6 +804,25 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   Widget _buildControlsOverlay() {
+    // En modo Picture-in-Picture, no mostrar gradiente
+    if (_isInPictureInPictureMode) {
+      return Container(
+        child: Column(
+          children: [
+            // Barra superior (vacía en vista preview)
+            _buildTopBar(),
+            const Spacer(),
+            // Controles centrales simplificados (solo play/pause)
+            _buildPreviewCenterControls(),
+            const Spacer(),
+            // Barra inferior (vacía en vista preview)
+            const SizedBox.shrink(),
+          ],
+        ),
+      );
+    }
+
+    // Vista normal con gradiente
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -725,20 +839,39 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       ),
       child: Column(
         children: [
-          // Barra superior
+          // Barra superior (vacía en vista preview)
           _buildTopBar(),
           const Spacer(),
-          // Controles centrales
-          _buildCenterControls(),
+          // Controles centrales simplificados (solo play/pause)
+          _buildPreviewCenterControls(),
           const Spacer(),
-          // Barra inferior
-          _buildBottomBar(),
+          // Barra inferior (vacía en vista preview)
+          const SizedBox.shrink(),
         ],
       ),
     );
   }
 
   Widget _buildFullscreenControlsOverlay() {
+    // En modo Picture-in-Picture, no mostrar gradiente
+    if (_isInPictureInPictureMode) {
+      return Container(
+        child: Column(
+          children: [
+            // Barra superior (solo botón de pantalla completa)
+            _buildFullscreenTopBar(),
+            const Spacer(),
+            // Controles centrales
+            _buildCenterControls(),
+            const Spacer(),
+            // Barra inferior
+            _buildBottomBar(),
+          ],
+        ),
+      );
+    }
+
+    // Vista normal con gradiente
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -769,62 +902,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   Widget _buildTopBar() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          if (widget.enableAirPlay && _isAirPlaySupported)
-            AirPlayStatusButton(
-              width: 32,
-              height: 32,
-              onAirPlayStateChanged: (isActive) {
-                if (mounted) {
-                  setState(() {
-                    _isAirPlayActive = isActive;
-                  });
-                }
-              },
-            ),
-          if (widget.enableAirPlay && _isAirPlaySupported)
-            const SizedBox(width: 8),
-          if (widget.enableScreenSharing && _isScreenSharingSupported)
-            _buildControlButton(
-              icon: _screenSharingState == ScreenSharingState.connected
-                  ? Icons.cast_connected
-                  : _isDiscoveringDevices
-                      ? Icons.search
-                      : Icons.cast,
-              onPressed: _screenSharingState == ScreenSharingState.connected
-                  ? _disconnectScreenSharing
-                  : _isDiscoveringDevices
-                      ? () {}
-                      : _showScreenSharingDialog,
-              tooltip: _screenSharingState == ScreenSharingState.connected
-                  ? 'Desconectar compartir pantalla'
-                  : _isDiscoveringDevices
-                      ? 'Buscando dispositivos...'
-                      : 'Compartir pantalla',
-            ),
-          if (widget.enableScreenSharing && _isScreenSharingSupported)
-            const SizedBox(width: 8),
-          if (widget.enablePictureInPicture)
-            _buildControlButton(
-              icon: Icons.picture_in_picture_alt,
-              onPressed: _enterPictureInPicture,
-              tooltip: 'Picture-in-Picture',
-            ),
-          if (widget.enablePictureInPicture) const SizedBox(width: 8),
-          _buildControlButton(
-            icon: _isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
-            onPressed: _toggleFullscreen,
-            tooltip: _isFullscreen
-                ? 'Salir de pantalla completa'
-                : 'Pantalla completa',
-          ),
-        ],
-      ),
-    );
+    // En la vista preview, no mostrar botones adicionales
+    // Solo se muestran en pantalla completa
+    return const SizedBox.shrink();
   }
 
   Widget _buildFullscreenTopBar() {
@@ -840,7 +920,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
               onAirPlayStateChanged: (isActive) {
                 if (mounted) {
                   setState(() {
-                    _isAirPlayActive = isActive;
+                    // _isAirPlayActive = isActive; // Removed unused field
                   });
                 }
               },
@@ -864,13 +944,23 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
                   : _isDiscoveringDevices
                       ? 'Buscando dispositivos...'
                       : 'Compartir pantalla',
+              isPictureInPicture: _isInPictureInPictureMode,
             ),
           if (widget.enableScreenSharing && _isScreenSharingSupported)
             const SizedBox(width: 8),
+          if (widget.enablePictureInPicture)
+            _buildControlButton(
+              icon: Icons.picture_in_picture_alt,
+              onPressed: _enterPictureInPicture,
+              tooltip: 'Picture-in-Picture',
+              isPictureInPicture: _isInPictureInPictureMode,
+            ),
+          if (widget.enablePictureInPicture) const SizedBox(width: 8),
           _buildControlButton(
             icon: Icons.fullscreen_exit,
             onPressed: _toggleFullscreen,
             tooltip: 'Salir de pantalla completa',
+            isPictureInPicture: _isInPictureInPictureMode,
           ),
         ],
       ),
@@ -886,6 +976,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
           onPressed: _skipBackward,
           tooltip: 'Retroceder ${widget.skipDuration}s',
           size: 40,
+          isPictureInPicture: _isInPictureInPictureMode,
         ),
         _buildControlButton(
           icon:
@@ -894,12 +985,32 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
           tooltip: _isPlaying ? 'Pausar' : 'Reproducir',
           size: 60,
           isPrimary: true,
+          isPictureInPicture: _isInPictureInPictureMode,
         ),
         _buildControlButton(
           icon: Icons.forward_10,
           onPressed: _skipForward,
           tooltip: 'Avanzar ${widget.skipDuration}s',
           size: 40,
+          isPictureInPicture: _isInPictureInPictureMode,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPreviewCenterControls() {
+    // En la vista preview, mostrar botón de play/pause y pantalla completa
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildControlButton(
+          icon:
+              _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+          onPressed: _togglePlayPause,
+          tooltip: _isPlaying ? 'Pausar' : 'Reproducir en pantalla completa',
+          size: 60,
+          isPrimary: true,
+          isPictureInPicture: _isInPictureInPictureMode,
         ),
       ],
     );
@@ -1013,30 +1124,45 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     required String tooltip,
     double size = 32,
     bool isPrimary = false,
+    bool isPictureInPicture = false,
   }) {
-    return Tooltip(
-      message: tooltip,
-      child: Container(
-        decoration: BoxDecoration(
-          color: isPrimary
-              ? Colors.white.withOpacity(0.9)
-              : Colors.black.withOpacity(0.5),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+    // Diseño nativo para Picture-in-Picture
+    if (isPictureInPicture) {
+      return Tooltip(
+        message: tooltip,
         child: IconButton(
           icon: Icon(
             icon,
             size: size,
-            color: isPrimary ? widget.primaryColor : Colors.white,
+            color: Colors.white,
           ),
           onPressed: onPressed,
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            foregroundColor: Colors.white,
+            shape: const CircleBorder(),
+          ),
+        ),
+      );
+    }
+
+    // Diseño nativo para botones normales
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        icon: Icon(
+          icon,
+          size: size,
+          color: isPrimary ? Colors.white : Colors.white.withOpacity(0.9),
+        ),
+        onPressed: onPressed,
+        style: IconButton.styleFrom(
+          backgroundColor: isPrimary
+              ? Colors.black.withOpacity(0.6)
+              : Colors.black.withOpacity(0.4),
+          foregroundColor: Colors.white,
+          shape: const CircleBorder(),
+          padding: EdgeInsets.all(size * 0.2),
         ),
       ),
     );

@@ -464,7 +464,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                                       tooltip:
                                           _isPlaying ? 'Pausar' : 'Reproducir',
                                       size: 60,
-                                      isPrimary: true,
                                     ),
                                     _buildControlButton(
                                       icon: Icons.forward_10,
@@ -611,7 +610,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
             onPressed: _togglePlayPause,
             tooltip: _isPlaying ? 'Pausar' : 'Reproducir',
             size: 48,
-            isPrimary: true,
           ),
           const SizedBox(width: 16),
           _buildControlButton(
@@ -630,15 +628,12 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     required VoidCallback onPressed,
     required String tooltip,
     double size = 32,
-    bool isPrimary = false,
   }) {
     return Tooltip(
       message: tooltip,
       child: Container(
         decoration: BoxDecoration(
-          color: isPrimary
-              ? Colors.white.withOpacity(0.9)
-              : Colors.black.withOpacity(0.5),
+          color: Colors.black.withOpacity(0.5),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
@@ -652,7 +647,7 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
           icon: Icon(
             icon,
             size: size,
-            color: isPrimary ? widget.primaryColor : Colors.white,
+            color: Colors.white,
           ),
           onPressed: onPressed,
         ),
