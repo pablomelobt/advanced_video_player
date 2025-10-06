@@ -2,6 +2,7 @@ package com.example.advanced_video_player
 
 import android.app.Activity
 import android.app.PictureInPictureParams
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
@@ -69,11 +70,7 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
         val hasPiPFeature = currentActivity.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
         Log.d("PictureInPicturePlugin", "FEATURE_PICTURE_IN_PICTURE: $hasPiPFeature")
         
-        // Verificar si la Activity soporta PiP
-        val supportsPiP = currentActivity.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
-        Log.d("PictureInPicturePlugin", "Activity supports PiP: $supportsPiP")
-        
-        // Verificar si la Activity tiene la configuración correcta
+        // Verificar si la Activity tiene la configuración correcta en el manifest
         var supportsPiPInManifest = false
         try {
             val activityInfo = currentActivity.packageManager.getActivityInfo(currentActivity.componentName, 0)
@@ -88,15 +85,22 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
         // pero PiP funciona. Vamos a ser más permisivos.
         val isSamsung = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
         val isAndroid8Plus = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+        val isXiaomi = Build.MANUFACTURER.equals("xiaomi", ignoreCase = true)
+        val isHuawei = Build.MANUFACTURER.equals("huawei", ignoreCase = true)
+        val isOnePlus = Build.MANUFACTURER.equals("oneplus", ignoreCase = true)
         
         Log.d("PictureInPicturePlugin", "Manufacturer: ${Build.MANUFACTURER}")
         Log.d("PictureInPicturePlugin", "Model: ${Build.MODEL}")
         Log.d("PictureInPicturePlugin", "Android version: ${Build.VERSION.RELEASE}")
         Log.d("PictureInPicturePlugin", "Is Samsung: $isSamsung")
+        Log.d("PictureInPicturePlugin", "Is Xiaomi: $isXiaomi")
+        Log.d("PictureInPicturePlugin", "Is Huawei: $isHuawei")
+        Log.d("PictureInPicturePlugin", "Is OnePlus: $isOnePlus")
         Log.d("PictureInPicturePlugin", "Is Android 8+: $isAndroid8Plus")
         
-        // Si es Samsung con Android 8+ o tiene la característica, asumir que soporta PiP
-        val finalResult = (isSamsung && isAndroid8Plus) || hasPiPFeature || supportsPiPInManifest
+        // Si es un fabricante conocido con Android 8+ o tiene la característica, asumir que soporta PiP
+        val isKnownManufacturer = isSamsung || isXiaomi || isHuawei || isOnePlus
+        val finalResult = (isKnownManufacturer && isAndroid8Plus) || hasPiPFeature || supportsPiPInManifest
         
         Log.d("PictureInPicturePlugin", "Final PiP support result: $finalResult")
         return finalResult
@@ -108,7 +112,7 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
         // Verificar si ya está en modo PiP
         if (currentActivity.isInPictureInPictureMode) {
             Log.d("PictureInPicturePlugin", "Ya está en modo Picture-in-Picture")
-            return false
+            return true
         }
         
         // Verificar si el dispositivo soporta PiP
@@ -119,9 +123,13 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
-                val ratio = Rational(width.toInt(), height.toInt())
+                // Calcular el aspect ratio correcto basado en las dimensiones del video
+                val aspectRatio = Rational(width.toInt(), height.toInt())
+                Log.d("PictureInPicturePlugin", "Aspect ratio: $aspectRatio (${width}x${height})")
+                
+                // Crear parámetros de PiP optimizados para video
                 val pipParams = PictureInPictureParams.Builder()
-                    .setAspectRatio(ratio)
+                    .setAspectRatio(aspectRatio)
                     .build()
                 
                 // Configurar la Activity para PiP
@@ -131,16 +139,18 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
                 val result = currentActivity.enterPictureInPictureMode(pipParams)
                 
                 if (result) {
-                    Log.d("PictureInPicturePlugin", "Entrando en modo Picture-in-Picture exitosamente")
+                    Log.d("PictureInPicturePlugin", "✅ Entrando en modo Picture-in-Picture exitosamente")
+                    Log.d("PictureInPicturePlugin", "📱 La ventana PiP mostrará solo el contenido del video")
+                    Log.d("PictureInPicturePlugin", "🎥 En modo PiP, solo el video será visible, no los controles")
                     // Notificar cambio de estado
                     eventSink?.success(true)
                     return true
                 } else {
-                    Log.d("PictureInPicturePlugin", "Error: No se pudo entrar en modo Picture-in-Picture")
+                    Log.d("PictureInPicturePlugin", "❌ Error: No se pudo entrar en modo Picture-in-Picture")
                     return false
                 }
             } catch (e: Exception) {
-                Log.d("PictureInPicturePlugin", "Error al entrar en PiP: ${e.message}")
+                Log.e("PictureInPicturePlugin", "❌ Error al entrar en PiP: ${e.message}")
                 return false
             }
         }
@@ -185,9 +195,14 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
         // Estado actual
         info["isCurrentlyInPiP"] = currentActivity.isInPictureInPictureMode
         info["isSamsung"] = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
+        info["isXiaomi"] = Build.MANUFACTURER.equals("xiaomi", ignoreCase = true)
+        info["isHuawei"] = Build.MANUFACTURER.equals("huawei", ignoreCase = true)
+        info["isOnePlus"] = Build.MANUFACTURER.equals("oneplus", ignoreCase = true)
         
         // Resultado final
-        val finalResult = (info["isSamsung"] as Boolean && info["isAndroid8Plus"] as Boolean) || 
+        val isKnownManufacturer = (info["isSamsung"] as Boolean) || (info["isXiaomi"] as Boolean) || 
+                                 (info["isHuawei"] as Boolean) || (info["isOnePlus"] as Boolean)
+        val finalResult = (isKnownManufacturer && info["isAndroid8Plus"] as Boolean) || 
                          (info["hasPiPFeature"] as Boolean) || 
                          (info["manifestSupportsPiP"] as Boolean)
         info["finalSupportResult"] = finalResult

@@ -85,6 +85,10 @@ public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandl
             case "getPlatformVersion":
                 result.success("Android " + android.os.Build.VERSION.RELEASE);
                 break;
+            case "isAirPlayActive":
+                // AirPlay no está disponible en Android
+                result.success(false);
+                break;
             default:
                 result.notImplemented();
                 break;
