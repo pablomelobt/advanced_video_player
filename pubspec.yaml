@@ -25,7 +25,7 @@ flutter:
         package: com.example.advanced_video_player
         pluginClass: AdvancedVideoPlayerPlugin
       ios:
-        pluginClass: PictureInPicturePlugin
+        pluginClass: AdvancedVideoPlayerPlugin
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

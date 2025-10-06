@@ -12,6 +12,7 @@ class FullscreenVideoPage extends StatefulWidget {
   final int skipDuration;
   final bool enablePictureInPicture;
   final bool enableScreenSharing;
+  final bool enableAirPlay;
   final String? videoTitle;
   final String? videoDescription;
 
@@ -23,6 +24,7 @@ class FullscreenVideoPage extends StatefulWidget {
     required this.skipDuration,
     this.enablePictureInPicture = true,
     this.enableScreenSharing = true,
+    this.enableAirPlay = true,
     this.videoTitle,
     this.videoDescription,
   });

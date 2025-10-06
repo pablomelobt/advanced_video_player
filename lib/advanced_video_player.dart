@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'fullscreen_video_page.dart';
 import 'picture_in_picture_service.dart';
 import 'screen_sharing_service.dart';
+import 'airplay_button.dart';
 
 /// Un reproductor de video avanzado con controles modernos y atractivos
 class AdvancedVideoPlayer extends StatefulWidget {
@@ -33,6 +34,9 @@ class AdvancedVideoPlayer extends StatefulWidget {
   /// Si es true, habilita el botón de compartir pantalla (default: true)
   final bool enableScreenSharing;
 
+  /// Si es true, habilita el botón de AirPlay (default: true, solo iOS)
+  final bool enableAirPlay;
+
   /// Título del video para compartir
   final String? videoTitle;
 
@@ -54,6 +58,7 @@ class AdvancedVideoPlayer extends StatefulWidget {
     this.skipDuration = 10,
     this.enablePictureInPicture = true,
     this.enableScreenSharing = true,
+    this.enableAirPlay = true,
     this.videoTitle,
     this.videoDescription,
     this.primaryColor = const Color(0xFF6366F1),
@@ -75,7 +80,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   final bool _isFullscreen = false;
   bool _isPictureInPictureSupported = false;
   bool _isScreenSharingSupported = false;
+  bool _isAirPlaySupported = false;
   bool _isDiscoveringDevices = false;
+  bool _isAirPlayActive = false;
   ScreenSharingState _screenSharingState = ScreenSharingState.disconnected;
   String? _currentPairingCode;
   bool _isPairing = false;
@@ -96,6 +103,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     _setupAnimations();
     _checkPictureInPictureSupport();
     _initializeScreenSharing();
+    _initializeAirPlay();
   }
 
   void _checkPictureInPictureSupport() async {
@@ -149,6 +157,43 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         _isScreenSharingSupported = true;
       });
       debugPrint('🔍 AVANZADO: Asumiendo soporte por defecto debido a error');
+    }
+  }
+
+  void _initializeAirPlay() async {
+    debugPrint('🔍 AIRPLAY: Inicializando AirPlay...');
+    debugPrint('🔍 AIRPLAY: enableAirPlay: ${widget.enableAirPlay}');
+
+    if (!widget.enableAirPlay) {
+      debugPrint('❌ AIRPLAY: AirPlay deshabilitado en widget');
+      return;
+    }
+
+    // AirPlay solo está disponible en iOS
+    if (Theme.of(context).platform != TargetPlatform.iOS) {
+      debugPrint('❌ AIRPLAY: AirPlay solo disponible en iOS');
+      return;
+    }
+
+    try {
+      // Verificar si AirPlay está disponible
+      const channel = MethodChannel('advanced_video_player');
+      final isActive = await channel.invokeMethod('isAirPlayActive') ?? false;
+
+      if (!mounted) return;
+      setState(() {
+        _isAirPlaySupported = true;
+        _isAirPlayActive = isActive;
+      });
+      debugPrint('✅ AIRPLAY: AirPlay inicializado correctamente');
+    } catch (e) {
+      debugPrint('❌ AIRPLAY: Error inicializando AirPlay: $e');
+      // En caso de error, asumir que está soportado para mostrar el botón
+      if (!mounted) return;
+      setState(() {
+        _isAirPlaySupported = true;
+      });
+      debugPrint('🔍 AIRPLAY: Asumiendo soporte por defecto debido a error');
     }
   }
 
@@ -342,6 +387,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             skipDuration: widget.skipDuration,
             enablePictureInPicture: widget.enablePictureInPicture,
             enableScreenSharing: widget.enableScreenSharing,
+            enableAirPlay: widget.enableAirPlay,
             videoTitle: widget.videoTitle,
             videoDescription: widget.videoDescription,
           ),
@@ -728,6 +774,20 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          if (widget.enableAirPlay && _isAirPlaySupported)
+            AirPlayStatusButton(
+              width: 32,
+              height: 32,
+              onAirPlayStateChanged: (isActive) {
+                if (mounted) {
+                  setState(() {
+                    _isAirPlayActive = isActive;
+                  });
+                }
+              },
+            ),
+          if (widget.enableAirPlay && _isAirPlaySupported)
+            const SizedBox(width: 8),
           if (widget.enableScreenSharing && _isScreenSharingSupported)
             _buildControlButton(
               icon: _screenSharingState == ScreenSharingState.connected
@@ -773,6 +833,20 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          if (widget.enableAirPlay && _isAirPlaySupported)
+            AirPlayStatusButton(
+              width: 32,
+              height: 32,
+              onAirPlayStateChanged: (isActive) {
+                if (mounted) {
+                  setState(() {
+                    _isAirPlayActive = isActive;
+                  });
+                }
+              },
+            ),
+          if (widget.enableAirPlay && _isAirPlaySupported)
+            const SizedBox(width: 8),
           if (widget.enableScreenSharing && _isScreenSharingSupported)
             _buildControlButton(
               icon: _screenSharingState == ScreenSharingState.connected

@@ -30,7 +30,9 @@ class VideoPlayerDemo extends StatefulWidget {
 
 class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
   final String _videoUrl =
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+      'https://player.vimeo.com/external/510520873.m3u8?s=2651efc084fb2c4ad19925e2b48044cdecdbebaf&oauth2_token_id=1795373245';
+  // final String _videoUrl =
+  //     'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
   @override
   Widget build(BuildContext context) {
