@@ -28,7 +28,7 @@ class PictureInPictureService {
   }) async {
     try {
       debugPrint(
-          'Attempting to enter Picture-in-Picture mode with size: ${width}x${height}');
+          'Attempting to enter Picture-in-Picture mode with size: ${width}x$height');
       final bool success =
           await _channel.invokeMethod('enterPictureInPictureMode', {
         'width': width,

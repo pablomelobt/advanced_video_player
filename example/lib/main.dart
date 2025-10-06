@@ -35,6 +35,22 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
   //     'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
   @override
+  void initState() {
+    super.initState();
+    _initializeGoogleCast();
+  }
+
+  void _initializeGoogleCast() async {
+    // Inicializar Google Cast automáticamente en Android
+    try {
+      await AdvancedVideoPlayerCast.initializeCast();
+      debugPrint('✅ Google Cast inicializado correctamente');
+    } catch (e) {
+      debugPrint('❌ Error inicializando Google Cast: $e');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A1A),
@@ -98,7 +114,7 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                     ),
                   );
                 },
-                primaryColor: const Color(0xFFE7662B),
+                primaryColor: const Color.fromARGB(255, 255, 81, 0),
                 secondaryColor: const Color(0xFFED8C60),
                 skipDuration: 10,
                 enablePictureInPicture: true,

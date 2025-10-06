@@ -481,75 +481,131 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                                   child: Column(
                                     children: [
                                       // Barra de progreso
-                                      GestureDetector(
-                                        onTapDown: (details) {
-                                          final RenderBox renderBox = context
-                                              .findRenderObject() as RenderBox;
-                                          final position =
-                                              renderBox.globalToLocal(
-                                                  details.globalPosition);
-                                          final width =
-                                              renderBox.size.width - 32;
-                                          final percentage =
-                                              position.dx / width;
-                                          final newPosition = Duration(
-                                            milliseconds: (widget
-                                                        .controller
-                                                        .value
-                                                        .duration
-                                                        .inMilliseconds *
-                                                    percentage)
-                                                .round(),
-                                          );
-                                          widget.controller.seekTo(newPosition);
-                                        },
-                                        child: Container(
-                                          height: 4,
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                BorderRadius.circular(2),
-                                            color:
-                                                Colors.white.withOpacity(0.3),
-                                          ),
-                                          child: Stack(
-                                            children: [
-                                              FractionallySizedBox(
-                                                alignment: Alignment.centerLeft,
-                                                widthFactor: widget
-                                                            .controller
-                                                            .value
-                                                            .duration
+                                      LayoutBuilder(
+                                        builder: (layoutContext, constraints) {
+                                          final width = constraints.maxWidth;
+
+                                          return GestureDetector(
+                                            behavior:
+                                                HitTestBehavior.translucent,
+                                            onTapDown: (details) {
+                                              final localDx = details
+                                                  .localPosition.dx
+                                                  .clamp(0, width);
+                                              final relative = localDx / width;
+                                              final duration = widget
+                                                  .controller.value.duration;
+                                              if (duration.inMilliseconds > 0) {
+                                                widget.controller.seekTo(
+                                                    duration * relative);
+                                              }
+                                            },
+                                            child: ValueListenableBuilder<
+                                                VideoPlayerValue>(
+                                              valueListenable:
+                                                  widget.controller,
+                                              builder: (context, value, _) {
+                                                final position = value.position;
+                                                final duration = value.duration;
+                                                final progress = duration
                                                             .inMilliseconds >
                                                         0
-                                                    ? widget
-                                                            .controller
-                                                            .value
-                                                            .position
-                                                            .inMilliseconds /
-                                                        widget
-                                                            .controller
-                                                            .value
-                                                            .duration
-                                                            .inMilliseconds
-                                                    : 0.0,
-                                                child: Container(
-                                                  decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            2),
-                                                    gradient: LinearGradient(
-                                                      colors: [
-                                                        widget.primaryColor,
-                                                        widget.secondaryColor
-                                                      ],
-                                                    ),
+                                                    ? (position.inMilliseconds /
+                                                            duration
+                                                                .inMilliseconds)
+                                                        .clamp(0.0, 1.0)
+                                                    : 0.0;
+
+                                                return Container(
+                                                  // 🔹 altura táctil cómoda, pero barra pegada abajo
+                                                  height: 28,
+                                                  alignment:
+                                                      Alignment.bottomCenter,
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 0,
+                                                      vertical: 8),
+                                                  child: Stack(
+                                                    alignment:
+                                                        Alignment.centerLeft,
+                                                    children: [
+                                                      // Fondo gris translúcido
+                                                      Container(
+                                                        height: 3,
+                                                        width: width,
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(2),
+                                                          color: Colors.white
+                                                              .withOpacity(
+                                                                  0.25),
+                                                        ),
+                                                      ),
+                                                      // Progreso naranja (YouTube-style)
+                                                      FractionallySizedBox(
+                                                        alignment: Alignment
+                                                            .centerLeft,
+                                                        widthFactor: progress,
+                                                        child: Container(
+                                                          height: 3,
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        2),
+                                                            gradient:
+                                                                LinearGradient(
+                                                              colors: [
+                                                                widget
+                                                                    .primaryColor,
+                                                                widget
+                                                                    .secondaryColor
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      // Thumb circular pequeño
+                                                      Positioned(
+                                                        left:
+                                                            (width * progress) -
+                                                                6,
+                                                        bottom: -4,
+                                                        child: Container(
+                                                          width: 12,
+                                                          height: 12,
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: Colors.white,
+                                                            shape:
+                                                                BoxShape.circle,
+                                                            boxShadow: [
+                                                              BoxShadow(
+                                                                color: Colors
+                                                                    .black
+                                                                    .withOpacity(
+                                                                        0.3),
+                                                                blurRadius: 3,
+                                                                offset:
+                                                                    const Offset(
+                                                                        0, 1),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
+                                                );
+                                              },
+                                            ),
+                                          );
+                                        },
                                       ),
+
                                       const SizedBox(height: 12),
                                       // Tiempo y duración
                                       Row(
