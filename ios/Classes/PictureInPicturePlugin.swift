@@ -41,11 +41,11 @@ public class PictureInPicturePlugin: NSObject, FlutterPlugin, AVPictureInPicture
     private func enterPictureInPictureMode(width: Double, height: Double) -> Bool {
         if #available(iOS 13.0, *) {
             guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                  let window = windowScene.windows.first else {
+                  windowScene.windows.first != nil else {
                 return false
             }
         } else {
-            guard let window = UIApplication.shared.keyWindow else {
+            guard UIApplication.shared.keyWindow != nil else {
                 return false
             }
         }
