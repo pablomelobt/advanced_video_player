@@ -53,6 +53,9 @@ dependencies {
     implementation 'com.google.android.gms:play-services-cast-framework:21.4.0'
     implementation 'com.google.android.gms:play-services-cast:21.4.0'
     
+    // MediaRouter for native Cast button
+    implementation 'androidx.mediarouter:mediarouter:1.6.0'
+    
     // Google Guava for ImmutableList
     implementation 'com.google.guava:guava:31.1-android'
 }

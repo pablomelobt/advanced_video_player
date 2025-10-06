@@ -10,6 +10,7 @@ import 'fullscreen_video_page.dart';
 import 'picture_in_picture_service.dart';
 import 'screen_sharing_service.dart';
 import 'airplay_button.dart';
+import 'widgets/cast_button.dart';
 
 /// Un reproductor de video avanzado con controles modernos y atractivos
 class AdvancedVideoPlayer extends StatefulWidget {
@@ -111,6 +112,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _initializeAirPlay();
+    _initializeGoogleCast();
   }
 
   void _checkPictureInPictureSupport() async {
@@ -187,6 +189,51 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         _isScreenSharingSupported = true;
       });
       debugPrint('🔍 AVANZADO: Asumiendo soporte por defecto debido a error');
+    }
+  }
+
+  void _initializeGoogleCast() async {
+    debugPrint('🔍 GOOGLE CAST: Inicializando Google Cast...');
+
+    // Google Cast solo está disponible en Android
+    if (Theme.of(context).platform != TargetPlatform.android) {
+      debugPrint('❌ GOOGLE CAST: Solo disponible en Android');
+      return;
+    }
+
+    try {
+      await AdvancedVideoPlayerCast.initializeCast();
+      debugPrint('✅ GOOGLE CAST: Inicializado correctamente');
+    } catch (e) {
+      debugPrint('❌ GOOGLE CAST: Error inicializando: $e');
+    }
+  }
+
+  void _castCurrentVideo() async {
+    if (Theme.of(context).platform != TargetPlatform.android) {
+      return;
+    }
+
+    try {
+      await AdvancedVideoPlayerCast.castVideo(widget.videoSource);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Video enviado a Google Cast'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ GOOGLE CAST: Error enviando video: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error enviando a Google Cast: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -496,7 +543,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
       debugPrint('🔍 PICTURE-IN-PICTURE: Aspect ratio: $aspectRatio');
       debugPrint(
-          '🔍 PICTURE-IN-PICTURE: Dimensiones calculadas: ${width}x${height}');
+          '🔍 PICTURE-IN-PICTURE: Dimensiones calculadas: ${width}x$height');
       debugPrint(
           '🔍 PICTURE-IN-PICTURE: Entrando en modo PiP - solo se mostrará el video');
 
@@ -806,19 +853,17 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   Widget _buildControlsOverlay() {
     // En modo Picture-in-Picture, no mostrar gradiente
     if (_isInPictureInPictureMode) {
-      return Container(
-        child: Column(
-          children: [
-            // Barra superior (vacía en vista preview)
-            _buildTopBar(),
-            const Spacer(),
-            // Controles centrales simplificados (solo play/pause)
-            _buildPreviewCenterControls(),
-            const Spacer(),
-            // Barra inferior (vacía en vista preview)
-            const SizedBox.shrink(),
-          ],
-        ),
+      return Column(
+        children: [
+          // Barra superior (vacía en vista preview)
+          _buildTopBar(),
+          const Spacer(),
+          // Controles centrales simplificados (solo play/pause)
+          _buildPreviewCenterControls(),
+          const Spacer(),
+          // Barra inferior (vacía en vista preview)
+          const SizedBox.shrink(),
+        ],
       );
     }
 
@@ -855,19 +900,17 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   Widget _buildFullscreenControlsOverlay() {
     // En modo Picture-in-Picture, no mostrar gradiente
     if (_isInPictureInPictureMode) {
-      return Container(
-        child: Column(
-          children: [
-            // Barra superior (solo botón de pantalla completa)
-            _buildFullscreenTopBar(),
-            const Spacer(),
-            // Controles centrales
-            _buildCenterControls(),
-            const Spacer(),
-            // Barra inferior
-            _buildBottomBar(),
-          ],
-        ),
+      return Column(
+        children: [
+          // Barra superior (solo botón de pantalla completa)
+          _buildFullscreenTopBar(),
+          const Spacer(),
+          // Controles centrales
+          _buildCenterControls(),
+          const Spacer(),
+          // Barra inferior
+          _buildBottomBar(),
+        ],
       );
     }
 
@@ -913,15 +956,18 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          // Botón de Google Cast (solo Android)
+          if (Theme.of(context).platform == TargetPlatform.android)
+            const CastButton(width: 32, height: 32),
+          if (Theme.of(context).platform == TargetPlatform.android)
+            const SizedBox(width: 8),
           if (widget.enableAirPlay && _isAirPlaySupported)
             AirPlayStatusButton(
               width: 32,
               height: 32,
               onAirPlayStateChanged: (isActive) {
                 if (mounted) {
-                  setState(() {
-                    // _isAirPlayActive = isActive; // Removed unused field
-                  });
+                  setState(() {});
                 }
               },
             ),
@@ -999,7 +1045,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   Widget _buildPreviewCenterControls() {
-    // En la vista preview, mostrar botón de play/pause y pantalla completa
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
@@ -1021,8 +1066,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Barra de progreso
-          _buildProgressBar(),
+          // _buildProgressBar(),
           const SizedBox(height: 12),
           // Tiempo y duración
           Row(
@@ -1050,73 +1094,58 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     );
   }
 
-  Widget _buildProgressBar() {
-    return GestureDetector(
-      onTapDown: (details) {
-        final RenderBox renderBox = context.findRenderObject() as RenderBox;
-        final position = renderBox.globalToLocal(details.globalPosition);
-        final width = renderBox.size.width - 32; // padding
-        final percentage = position.dx / width;
-        if (_controller != null) {
-          final newPosition = Duration(
-            milliseconds:
-                (_controller!.value.duration.inMilliseconds * percentage)
-                    .round(),
-          );
-          _controller!.seekTo(newPosition);
-        }
-      },
-      child: Container(
-        height: 4,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(2),
-          color: Colors.white.withOpacity(0.3),
-        ),
-        child: Stack(
-          children: [
-            // Progreso reproducido
-            FractionallySizedBox(
-              alignment: Alignment.centerLeft,
-              widthFactor: _getProgressWidthFactor(),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(2),
-                  gradient: LinearGradient(
-                    colors: [widget.primaryColor, widget.secondaryColor],
-                  ),
-                ),
-              ),
-            ),
-            // Indicador de posición
-            Positioned(
-              left: _controller != null &&
-                      _controller!.value.duration.inMilliseconds > 0
-                  ? (_controller!.value.position.inMilliseconds /
-                          _controller!.value.duration.inMilliseconds) *
-                      (MediaQuery.of(context).size.width - 32)
-                  : 0,
-              top: -6,
-              child: Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Widget _buildProgressBar() {
+  //   return LayoutBuilder(
+  //     builder: (context, constraints) {
+  //       return GestureDetector(
+  //         onTapDown: (details) {
+  //           final box = context.findRenderObject() as RenderBox;
+  //           final localPosition = box.globalToLocal(details.globalPosition);
+  //           final width = box.size.width;
+  //           final percentage = (localPosition.dx.clamp(0, width)) / width;
+
+  //           if (_controller != null) {
+  //             final newPosition = Duration(
+  //               milliseconds:
+  //                   (_controller!.value.duration.inMilliseconds * percentage)
+  //                       .round(),
+  //             );
+  //             _controller!.seekTo(newPosition);
+  //           }
+  //         },
+  //         child: Container(
+  //           height: 4,
+  //           decoration: BoxDecoration(
+  //             borderRadius: BorderRadius.circular(2),
+  //             color: Colors.white.withOpacity(0.3),
+  //           ),
+  //           child: Row(
+  //             children: [
+  //               // Progreso reproducido
+  //               Expanded(
+  //                 flex: (_getProgressWidthFactor() * 100).round(),
+  //                 child: Container(
+  //                   height: 4,
+  //                   decoration: BoxDecoration(
+  //                     borderRadius: BorderRadius.circular(2),
+  //                     gradient: LinearGradient(
+  //                       colors: [widget.primaryColor, widget.secondaryColor],
+  //                     ),
+  //                   ),
+  //                 ),
+  //               ),
+  //               // Espacio restante
+  //               Expanded(
+  //                 flex: ((1.0 - _getProgressWidthFactor()) * 100).round(),
+  //                 child: const SizedBox(height: 4),
+  //               ),
+  //             ],
+  //           ),
+  //         ),
+  //       );
+  //     },
+  //   );
+  // }
 
   Widget _buildControlButton({
     required IconData icon,
@@ -1929,4 +1958,21 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     }
     super.dispose();
   }
+}
+
+/// Clase estática para métodos de Google Cast
+class AdvancedVideoPlayerCast {
+  static const _channel = MethodChannel('advanced_video_player');
+
+  /// Inicializa el contexto de Cast
+  static Future<void> initializeCast() async =>
+      _channel.invokeMethod('initializeCast');
+
+  /// Envía el video al dispositivo Cast conectado
+  static Future<void> castVideo(String url) async =>
+      _channel.invokeMethod('castVideo', {'url': url});
+
+  /// Abre el Media Route Chooser Dialog nativo
+  static Future<void> showCastDialog() async =>
+      _channel.invokeMethod('showCastDialog');
 }
