@@ -43,6 +43,7 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
   bool _isInPictureInPictureMode = false;
   bool _isScreenSharingSupported = false;
   bool _isAirPlaySupported = false;
+  // ignore: unused_field
   bool _isAirPlayActive = false;
   bool _showAirPlayButtons = true;
   ScreenSharingState _screenSharingState = ScreenSharingState.disconnected;
@@ -106,45 +107,30 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
           _isInPictureInPictureMode = isInPip;
         });
       }
-    } catch (e) {
-      debugPrint('Error checking PiP state: $e');
-    }
+    } catch (e) {}
   }
 
   void _initializeScreenSharing() async {
-    debugPrint('🔍 Inicializando screen sharing...');
-    debugPrint('🔍 enableScreenSharing: ${widget.enableScreenSharing}');
-
     if (!widget.enableScreenSharing) {
-      debugPrint('❌ Screen sharing deshabilitado en widget');
       return;
     }
 
     try {
       _screenSharingService = ScreenSharingService();
-      debugPrint('🔍 Verificando soporte de screen sharing...');
+
       final supported = await ScreenSharingService.isScreenSharingSupported();
-      debugPrint('🔍 Soporte de screen sharing: $supported');
 
       if (!mounted) return;
       setState(() {
         _isScreenSharingSupported = supported;
       });
-      debugPrint(
-          '🔍 Estado actualizado - _isScreenSharingSupported: $_isScreenSharingSupported');
 
       if (supported) {
-        debugPrint('🔍 Inicializando servicio de screen sharing...');
         await _screenSharingService!.initialize();
         if (!mounted) return;
         _setupScreenSharingListeners();
-        debugPrint('✅ Screen sharing inicializado correctamente');
-      } else {
-        debugPrint('❌ Screen sharing no soportado en este dispositivo');
-      }
-    } catch (e) {
-      debugPrint('❌ Error inicializando screen sharing: $e');
-    }
+      } else {}
+    } catch (e) {}
   }
 
   void _initializeAirPlay() async {
@@ -297,7 +283,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
 
       if (mounted) {
         if (success) {
-          debugPrint('Picture-in-Picture activado');
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -308,7 +293,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
         }
       }
     } catch (e) {
-      debugPrint('Error al activar Picture-in-Picture: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -338,7 +322,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
   }
 
   void _onTapVideo() {
-    // Verificar el estado de PiP cuando se toca el video
     _checkPictureInPictureState();
 
     if (_showControls) {
@@ -735,7 +718,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     );
   }
 
-  // Métodos para compartir pantalla
   Future<void> _showScreenSharingDialog() async {
     if (_screenSharingService == null || !_isScreenSharingSupported) {
       if (!mounted) return;

@@ -41,13 +41,9 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
   }
 
   void _initializeGoogleCast() async {
-    // Inicializar Google Cast automáticamente en Android
     try {
       await AdvancedVideoPlayerCast.initializeCast();
-      debugPrint('✅ Google Cast inicializado correctamente');
-    } catch (e) {
-      debugPrint('❌ Error inicializando Google Cast: $e');
-    }
+    } catch (e) {}
   }
 
   @override

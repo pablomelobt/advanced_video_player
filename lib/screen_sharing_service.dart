@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Estados de la conexión de compartir pantalla
@@ -53,18 +52,16 @@ class ScreenSharingService {
       if (result == true) {
         _isInitialized = true;
         _updateState(ScreenSharingState.disconnected);
-        debugPrint('ScreenSharingService inicializado correctamente');
+
         return true;
       } else {
         throw Exception('Error inicializando el servicio nativo');
       }
     } catch (e) {
-      debugPrint('Error inicializando ScreenSharingService: $e');
       _errorController.add('Error al inicializar: $e');
 
       // Si es un MissingPluginException, usar fallback
       if (e.toString().contains('MissingPluginException')) {
-        debugPrint('🔍 Plugin nativo no disponible, usando fallback');
         _isInitialized = true;
         _updateState(ScreenSharingState.disconnected);
         return true;
@@ -100,13 +97,10 @@ class ScreenSharingService {
       }
       return [];
     } catch (e) {
-      debugPrint('Error descubriendo dispositivos: $e');
       _errorController.add('Error buscando dispositivos: $e');
 
       // Si es un MissingPluginException, usar fallback
       if (e.toString().contains('MissingPluginException')) {
-        debugPrint(
-            '🔍 Plugin nativo no disponible, usando dispositivos simulados');
         return [
           {
             "id": "shareplay_group",
@@ -149,12 +143,10 @@ class ScreenSharingService {
         return false;
       }
     } catch (e) {
-      debugPrint('Error conectando al dispositivo: $e');
       _errorController.add('Error conectando: $e');
 
       // Si es un MissingPluginException, usar fallback
       if (e.toString().contains('MissingPluginException')) {
-        debugPrint('🔍 Plugin nativo no disponible, simulando conexión');
         _updateState(ScreenSharingState.connected);
         _deviceController.add({
           'id': deviceId,
@@ -191,12 +183,10 @@ class ScreenSharingService {
       });
       return result == true;
     } catch (e) {
-      debugPrint('Error compartiendo video: $e');
       _errorController.add('Error compartiendo video: $e');
 
       // Si es un MissingPluginException, usar fallback
       if (e.toString().contains('MissingPluginException')) {
-        debugPrint('🔍 Plugin nativo no disponible, simulando compartir');
         return true;
       }
 
@@ -220,7 +210,6 @@ class ScreenSharingService {
       });
       return result == true;
     } catch (e) {
-      debugPrint('Error controlando reproducción: $e');
       return false;
     }
   }
@@ -235,7 +224,6 @@ class ScreenSharingService {
       }
       return false;
     } catch (e) {
-      debugPrint('Error desconectando: $e');
       _errorController.add('Error desconectando: $e');
       return false;
     }
@@ -260,16 +248,12 @@ class ScreenSharingService {
         break;
       case 'onSessionJoined':
         // SharePlay: Se unió a una sesión de grupo
-        final args = Map<String, dynamic>.from(call.arguments);
-        debugPrint(
-            'SharePlay: Sesión iniciada - ${args['sessionId']} con ${args['participants']} participantes');
+        Map<String, dynamic>.from(call.arguments);
         _updateState(ScreenSharingState.connected);
         break;
       case 'onPlaybackControl':
         // SharePlay: Recibió control de reproducción
-        final args = Map<String, dynamic>.from(call.arguments);
-        debugPrint(
-            'SharePlay: Control recibido - ${args['action']} en posición ${args['position']}');
+        Map<String, dynamic>.from(call.arguments);
         break;
     }
   }
@@ -297,34 +281,21 @@ class ScreenSharingService {
   /// Verifica si el compartir pantalla está soportado
   static Future<bool> isScreenSharingSupported() async {
     try {
-      debugPrint('🔍 Verificando soporte de screen sharing...');
-      debugPrint('🔍 Canal: $_channel');
-      debugPrint('🔍 Plataforma: ${Platform.operatingSystem}');
-
       // Intentar llamar al método con timeout
       final result = await _channel.invokeMethod('isSupported').timeout(
         const Duration(seconds: 5),
         onTimeout: () {
-          debugPrint('⏰ Timeout verificando soporte');
           return false;
         },
       );
 
-      debugPrint('🔍 Resultado de soporte: $result');
-      debugPrint('🔍 Tipo de resultado: ${result.runtimeType}');
-
       // Asegurar que el resultado sea boolean
       final bool supported = result == true || result == 1 || result == 'true';
-      debugPrint('🔍 Soporte final: $supported');
 
       return supported;
     } catch (e) {
-      debugPrint('❌ Error verificando soporte: $e');
-      debugPrint('❌ Stack trace: ${StackTrace.current}');
-
       // En caso de error, asumir que está soportado en iOS 15+
       if (Platform.isIOS) {
-        debugPrint('🔍 Asumiendo soporte en iOS por defecto');
         return true;
       }
 
