@@ -128,9 +128,10 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
                 val aspectRatio = Rational(width.toInt(), height.toInt())
                 Log.d("PictureInPicturePlugin", "Aspect ratio: $aspectRatio (${width}x${height})")
                 
-                // Crear parámetros de PiP optimizados para video
+                // Crear parámetros de PiP sin controles (sin acciones)
                 val pipParams = PictureInPictureParams.Builder()
                     .setAspectRatio(aspectRatio)
+                    // No agregamos .setActions() para que no aparezcan controles
                     .build()
                 
                 // Configurar la Activity para PiP

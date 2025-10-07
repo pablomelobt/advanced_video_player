@@ -374,10 +374,9 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                     ),
                     child: SafeArea(
                       child: _isInPictureInPictureMode
-                          ? _buildCompactControls()
+                          ? const SizedBox.shrink()
                           : Column(
                               children: [
-                                // Barra superior - botón de salida
                                 Container(
                                   padding: const EdgeInsets.all(16),
                                   child: Row(

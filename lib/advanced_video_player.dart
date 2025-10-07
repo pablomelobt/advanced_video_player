@@ -738,17 +738,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   Widget _buildControlsOverlay() {
-    // En modo Picture-in-Picture, no mostrar gradiente
+    // En modo Picture-in-Picture, no mostrar ningún control
     if (_isInPictureInPictureMode) {
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildPreviewCenterControls(),
-          const Spacer(),
-          // Barra inferior (vacía en vista preview)
-          const SizedBox.shrink(),
-        ],
-      );
+      return const SizedBox.shrink();
     }
 
     // Vista normal con gradiente
@@ -776,14 +768,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   Widget _buildFullscreenControlsOverlay() {
+    // En modo Picture-in-Picture, no mostrar ningún control
     if (_isInPictureInPictureMode) {
-      return Column(
-        children: [
-          Center(
-            child: _buildCenterControls(),
-          ),
-        ],
-      );
+      return const SizedBox.shrink();
     }
 
     return Container(
@@ -806,7 +793,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
           _buildFullscreenTopBar(),
           const Spacer(),
           // Controles centrales
-          if (!_isInPictureInPictureMode) _buildCenterControls(),
+          _buildCenterControls(),
           const Spacer(),
           // Barra inferior
           _buildBottomBar(),
@@ -818,64 +805,68 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   Widget _buildFullscreenTopBar() {
     return Container(
       padding: const EdgeInsets.all(16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          if (widget.enableAirPlay && _isAirPlaySupported)
-            AirPlayStatusButton(
-              width: 20,
-              height: 20,
-              onAirPlayStateChanged: (isActive) {
-                if (mounted) {
-                  setState(() {
-                    _isAirPlayActive = isActive;
-                  });
-                }
-              },
-            ),
-          if (Platform.isIOS && widget.enableAirPlay && _isAirPlaySupported)
-            const SizedBox(width: 8),
-          if (Platform.isAndroid &&
-              widget.enableScreenSharing &&
-              _isScreenSharingSupported)
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.enableAirPlay && _isAirPlaySupported)
+              AirPlayStatusButton(
+                width: 20,
+                height: 20,
+                onAirPlayStateChanged: (isActive) {
+                  if (mounted) {
+                    setState(() {
+                      _isAirPlayActive = isActive;
+                    });
+                  }
+                },
+              ),
+            if (Platform.isIOS && widget.enableAirPlay && _isAirPlaySupported)
+              const SizedBox(width: 6),
+            if (Platform.isAndroid &&
+                widget.enableScreenSharing &&
+                _isScreenSharingSupported)
+              _buildControlButton(
+                icon: _screenSharingState == ScreenSharingState.connected
+                    ? Icons.cast_connected
+                    : _isDiscoveringDevices
+                        ? Icons.search
+                        : Icons.cast,
+                onPressed: _screenSharingState == ScreenSharingState.connected
+                    ? _disconnectScreenSharing
+                    : _isDiscoveringDevices
+                        ? () {}
+                        : _showScreenSharingDialog,
+                tooltip: _screenSharingState == ScreenSharingState.connected
+                    ? 'Desconectar compartir pantalla'
+                    : _isDiscoveringDevices
+                        ? 'Buscando dispositivos...'
+                        : 'Compartir pantalla',
+                size: 40,
+                isPictureInPicture: _isInPictureInPictureMode,
+              ),
+            if (widget.enableScreenSharing && _isScreenSharingSupported)
+              const SizedBox(width: 6),
+            if (widget.enablePictureInPicture)
+              _buildControlButton(
+                icon: Icons.picture_in_picture_alt,
+                onPressed: _enterPictureInPicture,
+                tooltip: 'Picture-in-Picture',
+                size: 40,
+                isPictureInPicture: _isInPictureInPictureMode,
+              ),
+            if (widget.enablePictureInPicture) const SizedBox(width: 6),
             _buildControlButton(
-              icon: _screenSharingState == ScreenSharingState.connected
-                  ? Icons.cast_connected
-                  : _isDiscoveringDevices
-                      ? Icons.search
-                      : Icons.cast,
-              onPressed: _screenSharingState == ScreenSharingState.connected
-                  ? _disconnectScreenSharing
-                  : _isDiscoveringDevices
-                      ? () {}
-                      : _showScreenSharingDialog,
-              tooltip: _screenSharingState == ScreenSharingState.connected
-                  ? 'Desconectar compartir pantalla'
-                  : _isDiscoveringDevices
-                      ? 'Buscando dispositivos...'
-                      : 'Compartir pantalla',
+              icon: Icons.fullscreen_exit,
+              onPressed: _toggleFullscreen,
+              tooltip: 'Salir de pantalla completa',
               size: 40,
               isPictureInPicture: _isInPictureInPictureMode,
             ),
-          if (widget.enableScreenSharing && _isScreenSharingSupported)
-            const SizedBox(width: 8),
-          if (widget.enablePictureInPicture)
-            _buildControlButton(
-              icon: Icons.picture_in_picture_alt,
-              onPressed: _enterPictureInPicture,
-              tooltip: 'Picture-in-Picture',
-              size: 40,
-              isPictureInPicture: _isInPictureInPictureMode,
-            ),
-          if (widget.enablePictureInPicture) const SizedBox(width: 8),
-          _buildControlButton(
-            icon: Icons.fullscreen_exit,
-            onPressed: _toggleFullscreen,
-            tooltip: 'Salir de pantalla completa',
-            size: 40,
-            isPictureInPicture: _isInPictureInPictureMode,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
