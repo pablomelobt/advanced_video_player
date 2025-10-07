@@ -10,14 +10,11 @@ class PictureInPictureService {
   /// Verifica si el dispositivo soporta Picture-in-Picture
   static Future<bool> isPictureInPictureSupported() async {
     try {
-      print(
-          '🔍 Llamando a isPictureInPictureSupported en canal: ${_channel.name}');
       final bool supported =
           await _channel.invokeMethod('isPictureInPictureSupported');
-      print('✅ Respuesta nativa: $supported');
+
       return supported;
     } catch (e) {
-      print('❌ Error en isPictureInPictureSupported: $e');
       return false;
     }
   }
