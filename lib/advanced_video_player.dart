@@ -122,17 +122,25 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     final supported =
         await PictureInPictureService.isPictureInPictureSupported();
 
+    print('🔍 PiP Support Check: $supported');
+
     // Obtener información de debug en Android
     if (Platform.isAndroid) {
       try {
-        await PictureInPictureService.getPictureInPictureInfo();
-      } catch (e) {}
+        final info = await PictureInPictureService.getPictureInPictureInfo();
+        print('📱 PiP Info: $info');
+      } catch (e) {
+        print('❌ Error getting PiP info: $e');
+      }
     }
 
     if (!mounted) return;
     setState(() {
       _isPictureInPictureSupported = supported;
     });
+
+    print(
+        '✅ _isPictureInPictureSupported set to: $_isPictureInPictureSupported');
   }
 
   void _setupPictureInPictureListener() {
@@ -798,7 +806,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
           _buildFullscreenTopBar(),
           const Spacer(),
           // Controles centrales
-          _buildCenterControls(),
+          if (!_isInPictureInPictureMode) _buildCenterControls(),
           const Spacer(),
           // Barra inferior
           _buildBottomBar(),

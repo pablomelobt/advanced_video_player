@@ -19,6 +19,9 @@ import io.flutter.plugin.common.StandardMessageCodec;
 import io.flutter.plugin.platform.PlatformView;
 import io.flutter.plugin.platform.PlatformViewFactory;
 
+// ✅ Importar PictureInPicturePlugin
+import com.example.advanced_video_player.PictureInPicturePlugin;
+
 import com.google.android.gms.cast.framework.CastContext;
 import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.SessionManager;
@@ -53,6 +56,7 @@ public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandl
     private CastSession castSession;
     private SessionManager sessionManager;
     private SessionManagerListener<CastSession> sessionManagerListener;
+    private PictureInPicturePlugin pipPlugin;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
@@ -68,6 +72,12 @@ public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandl
         screenSharingChannel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), SCREEN_SHARING_CHANNEL);
         screenSharingChannel.setMethodCallHandler(this);
         Log.d("AdvancedVideoPlayer", "🔍 Canal screen sharing creado: " + SCREEN_SHARING_CHANNEL);
+        
+        // ✅ REGISTRAR el PictureInPicturePlugin aquí
+        Log.d("AdvancedVideoPlayer", "🔍 Registrando PictureInPicturePlugin...");
+        pipPlugin = new PictureInPicturePlugin();
+        pipPlugin.onAttachedToEngine(flutterPluginBinding);
+        Log.d("AdvancedVideoPlayer", "✅ PictureInPicturePlugin registrado correctamente");
         
         // Registrar el botón de transmisión como PlatformView
         flutterPluginBinding.getPlatformViewRegistry().registerViewFactory(
@@ -290,6 +300,13 @@ public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandl
     @Override
     public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
         activity = binding.getActivity();
+        
+        // ✅ Adjuntar el PictureInPicturePlugin a la Activity también
+        if (pipPlugin != null) {
+            Log.d("AdvancedVideoPlayer", "🔍 Adjuntando PictureInPicturePlugin a la Activity");
+            pipPlugin.onAttachedToActivity(binding);
+        }
+        
         try {
             castContext = CastContext.getSharedInstance(activity.getApplicationContext());
         } catch (Exception e) {
@@ -299,17 +316,25 @@ public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandl
 
     @Override
     public void onDetachedFromActivityForConfigChanges() {
-        // No action needed
+        if (pipPlugin != null) {
+            pipPlugin.onDetachedFromActivityForConfigChanges();
+        }
     }
 
     @Override
     public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
         activity = binding.getActivity();
+        if (pipPlugin != null) {
+            pipPlugin.onReattachedToActivityForConfigChanges(binding);
+        }
     }
 
     @Override
     public void onDetachedFromActivity() {
         activity = null;
+        if (pipPlugin != null) {
+            pipPlugin.onDetachedFromActivity();
+        }
     }
 
     @Override

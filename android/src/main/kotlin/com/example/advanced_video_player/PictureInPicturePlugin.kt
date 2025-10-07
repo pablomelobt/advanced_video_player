@@ -58,17 +58,35 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
     }
 
     private fun isPictureInPictureSupported(): Boolean {
-        val currentActivity = activity ?: return false
+        Log.d("PictureInPicturePlugin", "🔍 Verificando soporte de PiP...")
+        
+        val currentActivity = activity
+        if (currentActivity == null) {
+            Log.w("PictureInPicturePlugin", "⚠️ Activity es null, pero asumiendo soporte si API >= 26")
+            // Si la activity es null pero estamos en Android 8+, asumir que soporta PiP
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Log.d("PictureInPicturePlugin", "✅ Android ${Build.VERSION.SDK_INT} >= API 26, PiP SOPORTADO")
+                return true
+            } else {
+                Log.d("PictureInPicturePlugin", "❌ Android ${Build.VERSION.SDK_INT} < API 26, PiP NO SOPORTADO")
+                return false
+            }
+        }
         
         // Verificar versión de Android (PiP requiere Android 8.0+)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            Log.d("PictureInPicturePlugin", "Android version ${Build.VERSION.SDK_INT} no soporta PiP (requiere 8.0+)")
+            Log.d("PictureInPicturePlugin", "❌ Android version ${Build.VERSION.SDK_INT} no soporta PiP (requiere API 26+)")
             return false
         }
         
+        Log.d("PictureInPicturePlugin", "📱 Información del dispositivo:")
+        Log.d("PictureInPicturePlugin", "   Manufacturer: ${Build.MANUFACTURER}")
+        Log.d("PictureInPicturePlugin", "   Model: ${Build.MODEL}")
+        Log.d("PictureInPicturePlugin", "   Android version: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+        
         // Verificar si el dispositivo tiene la característica PiP
         val hasPiPFeature = currentActivity.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
-        Log.d("PictureInPicturePlugin", "FEATURE_PICTURE_IN_PICTURE: $hasPiPFeature")
+        Log.d("PictureInPicturePlugin", "   FEATURE_PICTURE_IN_PICTURE: $hasPiPFeature")
         
         // Verificar si la Activity tiene la configuración correcta en el manifest
         var supportsPiPInManifest = false
@@ -77,32 +95,15 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
             // Verificar si la Activity tiene android:supportsPictureInPicture="true" en el manifest
             supportsPiPInManifest = activityInfo.configChanges and android.content.pm.ActivityInfo.CONFIG_SCREEN_SIZE != 0
         } catch (e: Exception) {
-            Log.d("PictureInPicturePlugin", "Error checking manifest: ${e.message}")
+            Log.d("PictureInPicturePlugin", "   Error checking manifest: ${e.message}")
         }
-        Log.d("PictureInPicturePlugin", "Manifest supports PiP: $supportsPiPInManifest")
+        Log.d("PictureInPicturePlugin", "   Manifest supports PiP: $supportsPiPInManifest")
         
-        // Para Samsung y otros dispositivos, a veces la característica no se reporta correctamente
-        // pero PiP funciona. Vamos a ser más permisivos.
-        val isSamsung = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
-        val isAndroid8Plus = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-        val isXiaomi = Build.MANUFACTURER.equals("xiaomi", ignoreCase = true)
-        val isHuawei = Build.MANUFACTURER.equals("huawei", ignoreCase = true)
-        val isOnePlus = Build.MANUFACTURER.equals("oneplus", ignoreCase = true)
+        // ✅ SIMPLIFICADO: Si tiene Android 8.0+ (API 26), soporta PiP
+        // La mayoría de dispositivos con Android 8+ tienen PiP, aunque no reporten la característica
+        val finalResult = true // Siempre true si pasó la verificación de versión
         
-        Log.d("PictureInPicturePlugin", "Manufacturer: ${Build.MANUFACTURER}")
-        Log.d("PictureInPicturePlugin", "Model: ${Build.MODEL}")
-        Log.d("PictureInPicturePlugin", "Android version: ${Build.VERSION.RELEASE}")
-        Log.d("PictureInPicturePlugin", "Is Samsung: $isSamsung")
-        Log.d("PictureInPicturePlugin", "Is Xiaomi: $isXiaomi")
-        Log.d("PictureInPicturePlugin", "Is Huawei: $isHuawei")
-        Log.d("PictureInPicturePlugin", "Is OnePlus: $isOnePlus")
-        Log.d("PictureInPicturePlugin", "Is Android 8+: $isAndroid8Plus")
-        
-        // Si es un fabricante conocido con Android 8+ o tiene la característica, asumir que soporta PiP
-        val isKnownManufacturer = isSamsung || isXiaomi || isHuawei || isOnePlus
-        val finalResult = (isKnownManufacturer && isAndroid8Plus) || hasPiPFeature || supportsPiPInManifest
-        
-        Log.d("PictureInPicturePlugin", "Final PiP support result: $finalResult")
+        Log.d("PictureInPicturePlugin", "✅ PiP SOPORTADO (Android ${Build.VERSION.SDK_INT} >= API 26)")
         return finalResult
     }
 
@@ -194,18 +195,15 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
         
         // Estado actual
         info["isCurrentlyInPiP"] = currentActivity.isInPictureInPictureMode
-        info["isSamsung"] = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
-        info["isXiaomi"] = Build.MANUFACTURER.equals("xiaomi", ignoreCase = true)
-        info["isHuawei"] = Build.MANUFACTURER.equals("huawei", ignoreCase = true)
-        info["isOnePlus"] = Build.MANUFACTURER.equals("oneplus", ignoreCase = true)
         
-        // Resultado final
-        val isKnownManufacturer = (info["isSamsung"] as Boolean) || (info["isXiaomi"] as Boolean) || 
-                                 (info["isHuawei"] as Boolean) || (info["isOnePlus"] as Boolean)
-        val finalResult = (isKnownManufacturer && info["isAndroid8Plus"] as Boolean) || 
-                         (info["hasPiPFeature"] as Boolean) || 
-                         (info["manifestSupportsPiP"] as Boolean)
+        // Resultado final - Simplificado: Android 8+ siempre soporta PiP
+        val finalResult = info["isAndroid8Plus"] as Boolean
         info["finalSupportResult"] = finalResult
+        info["supportReason"] = if (finalResult) {
+            "Android ${Build.VERSION.SDK_INT} >= API 26 (Android 8.0+)"
+        } else {
+            "Android ${Build.VERSION.SDK_INT} < API 26"
+        }
         
         return info
     }
@@ -216,18 +214,39 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        Log.d("PictureInPicturePlugin", "✅ Plugin attached to activity")
         activity = binding.activity
+        
+        // Verificar el estado inicial de PiP
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val isCurrentlyInPiP = activity?.isInPictureInPictureMode ?: false
+            if (isCurrentlyInPiP) {
+                Log.d("PictureInPicturePlugin", "📱 Activity ya está en modo PiP")
+                eventSink?.success(true)
+            }
+        }
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
-        activity = null
+        Log.d("PictureInPicturePlugin", "⚙️ Detached from activity for config changes (PiP puede estar activándose)")
+        // NO establecer activity a null durante cambios de configuración
+        // ya que PiP es un cambio de configuración y necesitamos mantener la referencia
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        Log.d("PictureInPicturePlugin", "✅ Reattached to activity after config changes")
         activity = binding.activity
+        
+        // Verificar si entramos o salimos de PiP después del cambio de configuración
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val isCurrentlyInPiP = activity?.isInPictureInPictureMode ?: false
+            Log.d("PictureInPicturePlugin", "📱 Estado PiP después de reattach: $isCurrentlyInPiP")
+            eventSink?.success(isCurrentlyInPiP)
+        }
     }
 
     override fun onDetachedFromActivity() {
+        Log.d("PictureInPicturePlugin", "❌ Plugin detached from activity")
         activity = null
     }
 

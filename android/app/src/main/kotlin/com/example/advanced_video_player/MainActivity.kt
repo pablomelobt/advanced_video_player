@@ -1,16 +1,37 @@
 package com.example.advanced_video_player
 
+import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
-import io.flutter.embedding.engine.FlutterEngine
-import com.example.advanced_video_player.PictureInPicturePlugin
 
 class MainActivity: FlutterActivity() {
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
+    private val TAG = "MainActivity"
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        Log.d(TAG, "MainActivity creada")
+    }
+    
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        Log.d(TAG, "PiP mode changed: $isInPictureInPictureMode")
         
-        // Registrar el plugin de Picture-in-Picture manualmente
-        val pipPlugin = PictureInPicturePlugin()
-        flutterEngine.plugins.add(pipPlugin)
+        // El PictureInPicturePlugin escuchará estos cambios automáticamente
+        // a través de su implementación de ActivityAware
+    }
+    
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        // Si está en modo PiP, no hacer nada con el botón back
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) {
+            // No llamar a super, para que no cierre el PiP
+            return
+        }
+        super.onBackPressed()
     }
 }
