@@ -103,8 +103,12 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
 
     private func setupPlayer(url: URL) {
         print("[DEBUG] 🎬 Configurando player con URL: \(url)")
+        if pipController?.isPictureInPictureActive == true {
+            print("[DEBUG] ⚠️ Ignorando setUrl, PiP activo (evita reinicio en 0)")
+            return
+        }
 
-        // Si ya hay un player global activo, reutilízalo sin reiniciar
+
         if let shared = AdvancedVideoPlayerPlugin.sharedPlayer,
            let currentItem = shared.currentItem,
            let asset = currentItem.asset as? AVURLAsset,
@@ -115,7 +119,7 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
             return
         }
 
-        // Si la URL cambió, crear nuevo
+
         let playerItem = AVPlayerItem(url: url)
         let player = AdvancedVideoPlayerPlugin.sharedPlayer ?? AVPlayer()
         player.replaceCurrentItem(with: playerItem)
@@ -131,10 +135,13 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
 
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
         try? AVAudioSession.sharedInstance().setActive(true)
+        
     }
 
 
     private func enterPictureInPictureMode(width: Double, height: Double) -> Bool {
+
+
         print("[DEBUG] 🎥 Activando PiP con player compartido...")
 
         guard let player = AdvancedVideoPlayerPlugin.sharedPlayer,
@@ -148,7 +155,7 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
             return false
         }
 
-        // Evitar crear más de un PiP controller
+
         if pipController != nil {
             if pipController!.isPictureInPicturePossible {
                 pipController!.startPictureInPicture()
@@ -157,11 +164,11 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
         }
 
         DispatchQueue.main.async {
-            // Guardar el superlayer original y frame
+
             self.originalLayerSuperlayer = layer.superlayer
             self.originalLayerFrame = layer.frame
 
-            // Mover a dummy para PiP
+
             let dummy = UIView(frame: CGRect(x: -200, y: -200, width: 200, height: 150))
             dummy.isUserInteractionEnabled = false
             dummy.backgroundColor = .black

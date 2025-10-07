@@ -300,10 +300,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       await platform.invokeMethod('setUrl', {
         'url': widget.videoSource,
       });
-      print('[DEBUG] ✅ Reproductor nativo configurado para PiP');
-    } catch (e) {
-      print('[DEBUG] ⚠️ Error configurando reproductor nativo: $e');
-    }
+    } catch (e) {}
   }
 
   void _videoListener() {

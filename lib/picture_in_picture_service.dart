@@ -24,19 +24,14 @@ class PictureInPictureService {
     required double height,
   }) async {
     try {
-      print('[DEBUG] 🎯 Flutter: Llamando enterPictureInPictureMode...');
-      print('[DEBUG] 📐 Flutter: Dimensiones: ${width}x$height');
-
       final bool success =
           await _channel.invokeMethod('enterPictureInPictureMode', {
         'width': width,
         'height': height,
       });
 
-      print('[DEBUG] ✅ Flutter: Resultado PiP: $success');
       return success;
     } catch (e) {
-      print('[DEBUG] ❌ Flutter: Error en PiP: $e');
       return false;
     }
   }
