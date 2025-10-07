@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
+
+	<!-- Información básica del bundle -->
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -24,14 +24,20 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>13.0</string>
+
+	<!-- Requisitos de iOS -->
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+
+	<!-- Launch / Main -->
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+
+	<!-- Orientaciones soportadas -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -46,14 +52,19 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 
-	<!-- Permitir control indirecto (requerido por PiP) -->
+	<!-- ⚙️ Configuración esencial para Video / PiP / AirPlay -->
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 
-	<!-- Permitir que el audio/vídeo continúe en background (AirPlay + PiP) -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>picture-in-picture</string>
 	</array>
+
+	<!-- Mejora la fluidez de video en dispositivos iPhone -->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+
 </dict>
 </plist>

@@ -83,6 +83,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   bool _isScreenSharingSupported = false;
   bool _isAirPlaySupported = false;
   bool _isDiscoveringDevices = false;
+  // ignore: unused_field
   bool _isAirPlayActive = false;
   bool _isInPictureInPictureMode = false;
   // bool _isAirPlayActive = false; // Removed unused field
@@ -118,19 +119,14 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   void _checkPictureInPictureSupport() async {
-    debugPrint('🔍 PICTURE-IN-PICTURE: Verificando soporte...');
     final supported =
         await PictureInPictureService.isPictureInPictureSupported();
-    debugPrint('🔍 PICTURE-IN-PICTURE: Soporte detectado: $supported');
 
     // Obtener información de debug en Android
     if (Platform.isAndroid) {
       try {
-        final info = await PictureInPictureService.getPictureInPictureInfo();
-        debugPrint('🔍 PICTURE-IN-PICTURE: Información del dispositivo: $info');
-      } catch (e) {
-        debugPrint('🔍 PICTURE-IN-PICTURE: Error obteniendo info: $e');
-      }
+        await PictureInPictureService.getPictureInPictureInfo();
+      } catch (e) {}
     }
 
     if (!mounted) return;
@@ -140,117 +136,61 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   void _setupPictureInPictureListener() {
-    // Escuchar cambios en el estado de Picture-in-Picture
     PictureInPictureService.pictureInPictureModeStream.listen((isInPip) {
       if (!mounted) return;
       setState(() {
         _isInPictureInPictureMode = isInPip;
       });
-      debugPrint('🔍 PICTURE-IN-PICTURE: Estado cambiado: $isInPip');
     });
   }
 
   void _initializeScreenSharing() async {
-    debugPrint('🔍 AVANZADO: Inicializando screen sharing...');
-    debugPrint(
-        '🔍 AVANZADO: enableScreenSharing: ${widget.enableScreenSharing}');
-
     if (!widget.enableScreenSharing) {
-      debugPrint('❌ AVANZADO: Screen sharing deshabilitado en widget');
       return;
     }
 
     try {
       _screenSharingService = ScreenSharingService();
-      debugPrint('🔍 AVANZADO: Verificando soporte de screen sharing...');
+
       final supported = await ScreenSharingService.isScreenSharingSupported();
-      debugPrint('🔍 AVANZADO: Soporte de screen sharing: $supported');
 
       if (!mounted) return;
       setState(() {
         _isScreenSharingSupported = supported;
       });
-      debugPrint(
-          '🔍 AVANZADO: Estado actualizado - _isScreenSharingSupported: $_isScreenSharingSupported');
 
       if (supported) {
-        debugPrint('🔍 AVANZADO: Inicializando servicio de screen sharing...');
         await _screenSharingService!.initialize();
         if (!mounted) return;
         _setupScreenSharingListeners();
-        debugPrint('✅ AVANZADO: Screen sharing inicializado correctamente');
-      } else {
-        debugPrint(
-            '❌ AVANZADO: Screen sharing no soportado en este dispositivo');
-      }
+      } else {}
     } catch (e) {
-      debugPrint('❌ AVANZADO: Error inicializando screen sharing: $e');
       // En caso de error, asumir que está soportado para mostrar el botón
       if (!mounted) return;
       setState(() {
         _isScreenSharingSupported = true;
       });
-      debugPrint('🔍 AVANZADO: Asumiendo soporte por defecto debido a error');
     }
   }
 
   void _initializeGoogleCast() async {
-    debugPrint('🔍 GOOGLE CAST: Inicializando Google Cast...');
-
     // Google Cast solo está disponible en Android
     if (!Platform.isAndroid) {
-      debugPrint('❌ GOOGLE CAST: Solo disponible en Android');
       return;
     }
 
     try {
       await AdvancedVideoPlayerCast.initializeCast();
-      debugPrint('✅ GOOGLE CAST: Inicializado correctamente');
-    } catch (e) {
-      debugPrint('❌ GOOGLE CAST: Error inicializando: $e');
-    }
-  }
-
-  void _castCurrentVideo() async {
-    if (!Platform.isAndroid) {
-      return;
-    }
-
-    try {
-      await AdvancedVideoPlayerCast.castVideo(widget.videoSource);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Video enviado a Google Cast'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } catch (e) {
-      debugPrint('❌ GOOGLE CAST: Error enviando video: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error enviando a Google Cast: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+    } catch (e) {}
   }
 
   void _initializeAirPlay() async {
-    debugPrint('🔍 AIRPLAY: Inicializando AirPlay...');
-    debugPrint('🔍 AIRPLAY: enableAirPlay: ${widget.enableAirPlay}');
-
     if (!widget.enableAirPlay) {
-      debugPrint('❌ AIRPLAY: AirPlay deshabilitado en widget');
       return;
     }
 
     // AirPlay solo está disponible en iOS
     if (!Platform.isIOS) {
-      debugPrint('❌ AIRPLAY: AirPlay solo disponible en iOS');
       return;
     }
 
@@ -264,15 +204,12 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         _isAirPlaySupported = true;
         // _isAirPlayActive = isActive; // Removed unused field
       });
-      debugPrint('✅ AIRPLAY: AirPlay inicializado correctamente');
     } catch (e) {
-      debugPrint('❌ AIRPLAY: Error inicializando AirPlay: $e');
       // En caso de error, asumir que está soportado para mostrar el botón
       if (!mounted) return;
       setState(() {
         _isAirPlaySupported = true;
       });
-      debugPrint('🔍 AIRPLAY: Asumiendo soporte por defecto debido a error');
     }
   }
 
@@ -310,7 +247,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
   Future<void> _initializeVideoPlayer() async {
     try {
-      debugPrint('Iniciando inicialización del video...');
       setState(() {
         _isLoading = true;
         _hasError = false;
@@ -318,11 +254,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
       // Dispose del controller anterior si existe
       if (_controller != null && _controller!.value.isInitialized) {
-        debugPrint('Disposing controller anterior...');
         await _controller!.dispose();
       }
 
-      debugPrint('Creando nuevo controller para: ${widget.videoSource}');
       if (widget.isAsset) {
         _controller = VideoPlayerController.asset(widget.videoSource);
       } else {
@@ -331,7 +265,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         );
       }
 
-      debugPrint('Inicializando controller...');
       await _controller!.initialize();
 
       // Verificar que se inicializó correctamente
@@ -339,10 +272,8 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         throw Exception('El video no se pudo inicializar correctamente');
       }
 
-      debugPrint(
-          'Video inicializado correctamente. Duración: ${_controller!.value.duration}');
-      debugPrint('Dimensiones: ${_controller!.value.size}');
-      debugPrint('Aspect ratio: ${_controller!.value.aspectRatio}');
+      // Configurar el reproductor nativo para PiP
+      await _setupNativePlayer();
 
       _controller!.addListener(_videoListener);
 
@@ -353,7 +284,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
       _showControlsTemporarily();
     } catch (e) {
-      debugPrint('Error inicializando video: $e');
       setState(() {
         _isLoading = false;
         _hasError = true;
@@ -363,11 +293,20 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     }
   }
 
+  /// Configura el reproductor nativo para Picture-in-Picture
+  Future<void> _setupNativePlayer() async {
+    try {
+      const platform = MethodChannel('advanced_video_player');
+      await platform.invokeMethod('setUrl', {
+        'url': widget.videoSource,
+      });
+    } catch (e) {}
+  }
+
   void _videoListener() {
     if (!mounted || _controller == null) return;
 
     if (_controller!.value.hasError) {
-      debugPrint('Error en el video: ${_controller!.value.errorDescription}');
       setState(() {
         _hasError = true;
         _errorMessage =
@@ -376,10 +315,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       widget.onError?.call(_errorMessage);
       return;
     }
-
-    // Log del estado del video cada vez que cambie
-    debugPrint(
-        'Video listener - Playing: ${_controller!.value.isPlaying}, Position: ${_controller!.value.position}, Duration: ${_controller!.value.duration}');
 
     if (_controller!.value.position >= _controller!.value.duration) {
       setState(() {
@@ -393,37 +328,14 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     }
   }
 
-  double _getProgressWidthFactor() {
-    if (_controller == null) return 0.0;
-
-    try {
-      final duration = _controller!.value.duration;
-      final position = _controller!.value.position;
-
-      if (duration.inMilliseconds <= 0) return 0.0;
-
-      final progress = position.inMilliseconds / duration.inMilliseconds;
-      return progress.clamp(0.0, 1.0);
-    } catch (e) {
-      debugPrint('Error calculating progress: $e');
-      return 0.0;
-    }
-  }
-
   void _togglePlayPause() {
-    debugPrint(
-        'Toggle play/pause llamado. Controller: ${_controller != null}, Inicializado: ${_controller?.value.isInitialized}, Playing: $_isPlaying');
-
     if (_controller == null || !_controller!.value.isInitialized) {
-      debugPrint('Controller no inicializado, reintentando...');
       _initializeVideoPlayer();
       return;
     }
 
     // Si estamos en vista preview (no en pantalla completa) y el video no está reproduciéndose
     if (!_isFullscreen && !_isPlaying) {
-      debugPrint(
-          '🎬 VISTA PREVIEW: Play presionado - Entrando en pantalla completa y reproduciendo');
       // Entrar en pantalla completa y reproducir automáticamente
       _enterFullscreenAndPlay();
       return;
@@ -432,11 +344,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     // Comportamiento normal para pausar o cuando ya estamos en pantalla completa
     setState(() {
       if (_isPlaying) {
-        debugPrint('Pausando video...');
         _controller!.pause();
         _isPlaying = false;
       } else {
-        debugPrint('Reproduciendo video...');
         _controller!.play();
         _isPlaying = true;
       }
@@ -488,8 +398,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   void _enterFullscreenAndPlay() async {
-    debugPrint('🎬 ENTRANDO EN PANTALLA COMPLETA Y REPRODUCIENDO...');
-
     // Primero reproducir el video
     setState(() {
       _isPlaying = true;
@@ -513,18 +421,14 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         fullscreenDialog: true,
       ),
     );
-
-    debugPrint('✅ PANTALLA COMPLETA ACTIVADA Y VIDEO REPRODUCIÉNDOSE');
   }
 
   void _enterPictureInPicture() async {
     if (_controller == null || !_controller!.value.isInitialized) {
-      debugPrint('❌ PICTURE-IN-PICTURE: Controller no inicializado');
       return;
     }
 
     if (!_isPictureInPictureSupported) {
-      debugPrint('❌ PICTURE-IN-PICTURE: No soportado en este dispositivo');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -542,12 +446,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       const width = 400.0;
       final height = width / aspectRatio;
 
-      debugPrint('🔍 PICTURE-IN-PICTURE: Aspect ratio: $aspectRatio');
-      debugPrint(
-          '🔍 PICTURE-IN-PICTURE: Dimensiones calculadas: ${width}x$height');
-      debugPrint(
-          '🔍 PICTURE-IN-PICTURE: Entrando en modo PiP - solo se mostrará el video');
-
       final success = await PictureInPictureService.enterPictureInPictureMode(
         width: width,
         height: height,
@@ -555,28 +453,11 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
       if (!mounted) return;
       if (success) {
-        debugPrint('✅ PICTURE-IN-PICTURE: Activado exitosamente');
-        debugPrint(
-            '📱 PICTURE-IN-PICTURE: La ventana flotante mostrará solo el video');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Picture-in-Picture activado - Solo video visible'),
-            duration: Duration(seconds: 2),
-            backgroundColor: Colors.green,
-          ),
-        );
+        debugPrint('Picture-in-Picture activado');
       } else {
-        debugPrint('❌ PICTURE-IN-PICTURE: No se pudo activar');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo activar Picture-in-Picture'),
-            duration: Duration(seconds: 2),
-            backgroundColor: Colors.red,
-          ),
-        );
+        debugPrint('No se pudo activar Picture-in-Picture');
       }
     } catch (e) {
-      debugPrint('❌ PICTURE-IN-PICTURE: Error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -701,9 +582,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   Widget _buildVideoStack() {
-    debugPrint(
-        '_buildVideoStack - Loading: $_isLoading, Controller: ${_controller != null}, Initialized: ${_controller?.value.isInitialized}');
-
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -1734,7 +1612,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             break;
           }
         } catch (e) {
-          debugPrint('Error con URL $urlString: $e');
           continue;
         }
       }
@@ -1791,7 +1668,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         }
       }
     } catch (e) {
-      debugPrint('Error general al abrir Chromecast: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

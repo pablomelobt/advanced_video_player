@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class PictureInPictureService {
@@ -13,10 +12,8 @@ class PictureInPictureService {
     try {
       final bool supported =
           await _channel.invokeMethod('isPictureInPictureSupported');
-      debugPrint('Picture-in-Picture support check result: $supported');
       return supported;
     } catch (e) {
-      debugPrint('Error checking PiP support: $e');
       return false;
     }
   }
@@ -27,17 +24,14 @@ class PictureInPictureService {
     required double height,
   }) async {
     try {
-      debugPrint(
-          'Attempting to enter Picture-in-Picture mode with size: ${width}x$height');
       final bool success =
           await _channel.invokeMethod('enterPictureInPictureMode', {
         'width': width,
         'height': height,
       });
-      debugPrint('Picture-in-Picture mode result: $success');
+
       return success;
     } catch (e) {
-      debugPrint('Error entering PiP mode: $e');
       return false;
     }
   }
@@ -49,7 +43,6 @@ class PictureInPictureService {
           await _channel.invokeMethod('exitPictureInPictureMode');
       return success;
     } catch (e) {
-      debugPrint('Error exiting PiP mode: $e');
       return false;
     }
   }
@@ -61,7 +54,6 @@ class PictureInPictureService {
           await _channel.invokeMethod('isInPictureInPictureMode');
       return inPip;
     } catch (e) {
-      debugPrint('Error checking PiP mode: $e');
       return false;
     }
   }
@@ -73,7 +65,6 @@ class PictureInPictureService {
           await _channel.invokeMethod('getPictureInPictureInfo');
       return Map<String, dynamic>.from(info);
     } catch (e) {
-      debugPrint('Error getting PiP info: $e');
       return {};
     }
   }
@@ -86,5 +77,10 @@ class PictureInPictureService {
       }
       return false;
     });
+  }
+
+  /// Stream para escuchar eventos de Picture-in-Picture (incluyendo navegación)
+  static Stream<dynamic> get pictureInPictureEventStream {
+    return _eventChannel.receiveBroadcastStream();
   }
 }

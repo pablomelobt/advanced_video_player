@@ -34,10 +34,7 @@ class AirPlayButton extends StatelessWidget {
       child: UiKitView(
         viewType: 'advanced_video_player/airplay_button',
         creationParamsCodec: const StandardMessageCodec(),
-        onPlatformViewCreated: (int id) {
-          // Opcional: configurar el botón si necesitas pasar parámetros
-          debugPrint('AirPlay button created with id: $id');
-        },
+        onPlatformViewCreated: (int id) {},
       ),
     );
   }
@@ -106,9 +103,7 @@ class _AirPlayStatusButtonState extends State<AirPlayStatusButton> {
         });
         widget.onAirPlayStateChanged?.call(isActive);
       }
-    } catch (e) {
-      debugPrint('Error checking AirPlay status: $e');
-    }
+    } catch (e) {}
   }
 
   @override
@@ -205,7 +200,6 @@ class _AirPlayDevicesListState extends State<AirPlayDevicesList> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading AirPlay devices: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
