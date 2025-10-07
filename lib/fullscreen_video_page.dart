@@ -97,6 +97,8 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     _pipStateTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       _checkPictureInPictureState();
     });
+
+    // La navegación automática ahora se maneja desde iOS nativo
   }
 
   void _checkPictureInPictureState() async {
@@ -272,26 +274,23 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     }
 
     try {
-      final aspectRatio = widget.controller.value.aspectRatio;
-      const width = 300.0;
-      final height = width / aspectRatio;
-
-      final success = await PictureInPictureService.enterPictureInPictureMode(
-        width: width,
-        height: height,
+      await PictureInPictureService.enterPictureInPictureMode(
+        width: 300.0,
+        height: 200.0,
       );
 
-      if (mounted) {
-        if (success) {
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No se pudo activar Picture-in-Picture'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
+      // if (mounted) {
+      //   if (success) {
+      //   } else {
+      //     ScaffoldMessenger.of(context).showSnackBar(
+      //       const SnackBar(
+      //         content: Text(
+      //             'No se pudo activar Picture-in-Picture, vuelve a intentar mas tarde'),
+      //         duration: Duration(seconds: 2),
+      //       ),
+      //     );
+      //   }
+      // }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -384,9 +383,7 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.end,
                                     children: [
-                                      if (_showAirPlayButtons &&
-                                          widget.enableAirPlay &&
-                                          _isAirPlaySupported)
+                                      if (Platform.isIOS)
                                         AirPlayStatusButton(
                                           width: 40,
                                           height: 40,

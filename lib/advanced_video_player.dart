@@ -272,6 +272,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         throw Exception('El video no se pudo inicializar correctamente');
       }
 
+      // Configurar el reproductor nativo para PiP
+      await _setupNativePlayer();
+
       _controller!.addListener(_videoListener);
 
       setState(() {
@@ -287,6 +290,19 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         _errorMessage = e.toString();
       });
       widget.onError?.call(_errorMessage);
+    }
+  }
+
+  /// Configura el reproductor nativo para Picture-in-Picture
+  Future<void> _setupNativePlayer() async {
+    try {
+      const platform = MethodChannel('advanced_video_player');
+      await platform.invokeMethod('setUrl', {
+        'url': widget.videoSource,
+      });
+      print('[DEBUG] ✅ Reproductor nativo configurado para PiP');
+    } catch (e) {
+      print('[DEBUG] ⚠️ Error configurando reproductor nativo: $e');
     }
   }
 
@@ -440,21 +456,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
       if (!mounted) return;
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Picture-in-Picture activado - Solo video visible'),
-            duration: Duration(seconds: 2),
-            backgroundColor: Colors.green,
-          ),
-        );
+        debugPrint('Picture-in-Picture activado');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo activar Picture-in-Picture'),
-            duration: Duration(seconds: 2),
-            backgroundColor: Colors.red,
-          ),
-        );
+        debugPrint('No se pudo activar Picture-in-Picture');
       }
     } catch (e) {
       if (!mounted) return;

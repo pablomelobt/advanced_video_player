@@ -12,10 +12,13 @@
 @import video_player_avfoundation;
 #endif
 
+#import "AdvancedVideoPlayerPlugin.h"
+
 @implementation GeneratedPluginRegistrant
 
 + (void)registerWithRegistry:(NSObject<FlutterPluginRegistry>*)registry {
   [FVPVideoPlayerPlugin registerWithRegistrar:[registry registrarForPlugin:@"FVPVideoPlayerPlugin"]];
+  [AdvancedVideoPlayerPlugin registerWithRegistrar:[registry registrarForPlugin:@"AdvancedVideoPlayerPlugin"]];
 }
 
 @end
