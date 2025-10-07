@@ -26,7 +26,7 @@ Un reproductor de video avanzado para Flutter con controles modernos, diseño at
 - **Screen Sharing**: Compartir video a Chromecast y dispositivos compatibles
 - **AirPlay**: Soporte nativo para AirPlay en iOS
 - **Google Cast**: Integración completa con Google Cast
-- **Código QR**: Vinculación fácil con códigos QR
+
 
 ## 🚀 Instalación
 
@@ -54,7 +54,6 @@ flutter pub get
 
 El paquete incluye automáticamente:
 - `video_player: ^2.8.1` - Reproductor de video base
-- `qr_flutter: ^4.1.0` - Generación de códigos QR
 - `url_launcher: ^6.2.2` - Apertura de URLs externas
 
 ## ⚙️ Configuración Requerida
@@ -228,7 +227,6 @@ AdvancedVideoPlayer(
 - **🖼️ Picture-in-Picture**: Reproduce el video en una ventana flotante
 - **📺 Screen Sharing**: Comparte el video a Chromecast y dispositivos compatibles
 - **📱 AirPlay**: Transmite el video a dispositivos Apple (solo iOS)
-- **🔗 Código QR**: Genera códigos QR para vinculación fácil con TV
 
 ### Funcionalidades Automáticas
 - **👁️ Controles Inteligentes**: Aparecen y desaparecen automáticamente
@@ -298,7 +296,6 @@ AdvancedVideoPlayer(
 
 **Características:**
 - Descubrimiento automático de dispositivos
-- Código QR para vinculación fácil
 - Soporte para múltiples tipos de dispositivos
 - Reconexión automática
 
@@ -317,14 +314,7 @@ AdvancedVideoPlayer(
 - **iOS**: iOS 11.0+
 - Dispositivos Apple compatibles (Apple TV, AirPlay speakers, etc.)
 
-### Código QR para Vinculación
 
-El reproductor genera automáticamente códigos QR para facilitar la vinculación con dispositivos:
-
-- Códigos únicos de 6 dígitos
-- Generación automática de QR
-- Vinculación por código o QR
-- Timeout automático de 60 segundos
 
 ## 🧪 Ejecutar el Ejemplo
 

@@ -1,6 +1,10 @@
 name: advanced_video_player
-description: "A new Flutter package project."
+description: "Un reproductor de video avanzado para Flutter con controles modernos, Picture-in-Picture, Google Cast, AirPlay y diseño personalizable."
 version: 0.0.1
+homepage: https://github.com/bodytech/advanced_video_player
+repository: https://github.com/bodytech/advanced_video_player
+issue_tracker: https://github.com/bodytech/advanced_video_player/issues
+documentation: https://github.com/bodytech/advanced_video_player#readme
 
 environment:
   sdk: ">=3.4.4 <4.0.0"
