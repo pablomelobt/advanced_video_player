@@ -45,7 +45,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
   bool _isAirPlaySupported = false;
   // ignore: unused_field
   bool _isAirPlayActive = false;
-  bool _showAirPlayButtons = true;
   ScreenSharingState _screenSharingState = ScreenSharingState.disconnected;
   late AnimationController _controlsAnimationController;
   late Animation<double> _controlsAnimation;
@@ -159,9 +158,7 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     // Ocultar botones de AirPlay después de 2 segundos
     _hideAirPlayTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) {
-        setState(() {
-          _showAirPlayButtons = false;
-        });
+        setState(() {});
       }
     });
   }
@@ -639,41 +636,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildCompactControls() {
-    return Center(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildControlButton(
-            icon: Icons.replay_10,
-            onPressed: _skipBackward,
-            tooltip: 'Retroceder ${widget.skipDuration}s',
-            size: 45,
-            iconSize: 40,
-          ),
-          const SizedBox(width: 16),
-          _buildControlButton(
-            icon: _isPlaying
-                ? Icons.pause_circle_filled
-                : Icons.play_circle_filled,
-            onPressed: _togglePlayPause,
-            tooltip: _isPlaying ? 'Pausar' : 'Reproducir',
-            size: 65,
-            iconSize: 60,
-          ),
-          const SizedBox(width: 16),
-          _buildControlButton(
-            icon: Icons.forward_10,
-            onPressed: _skipForward,
-            tooltip: 'Avanzar ${widget.skipDuration}s',
-            size: 45,
-            iconSize: 40,
-          ),
-        ],
       ),
     );
   }
