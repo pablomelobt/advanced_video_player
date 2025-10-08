@@ -45,8 +45,10 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
         let factory = AirPlayButtonFactory(messenger: registrar.messenger())
         registrar.register(factory, withId: "advanced_video_player/airplay_button")
 
-
+        // Registrar el nuevo PlayerView nativo (sin dummy views)
         if #available(iOS 15.0, *) {
+            let playerFactory = PlayerViewFactory(messenger: registrar.messenger())
+            registrar.register(playerFactory, withId: "advanced_video_player/native_view")
             ScreenSharingPlugin.register(with: registrar)
         }
     }
@@ -381,5 +383,260 @@ class AirPlayButtonView: NSObject, FlutterPlatformView {
     }
     func view() -> UIView {
         return airPlayView
+    }
+}
+
+// MARK: - Native Player View (Arquitectura nativa sin dummy views)
+@available(iOS 15.0, *)
+class PlayerView: UIView, AVPictureInPictureControllerDelegate {
+    private var player: AVPlayer?
+    private var playerLayer: AVPlayerLayer?
+    private var pipController: AVPictureInPictureController?
+    private let viewId: Int64
+    private let messenger: FlutterBinaryMessenger
+    
+    init(frame: CGRect, viewId: Int64, messenger: FlutterBinaryMessenger) {
+        self.viewId = viewId
+        self.messenger = messenger
+        super.init(frame: frame)
+        backgroundColor = .black
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    func setup(with url: URL, autoplay: Bool = true) {
+        print("[PlayerView] 🎬 Configurando player con URL: \(url)")
+        
+        let item = AVPlayerItem(url: url)
+        player = AVPlayer(playerItem: item)
+        playerLayer = AVPlayerLayer(player: player)
+        playerLayer?.videoGravity = .resizeAspect
+        
+        if let playerLayer = playerLayer {
+            layer.addSublayer(playerLayer)
+            playerLayer.frame = bounds
+        }
+        
+        // Configurar audio session
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
+        try? AVAudioSession.sharedInstance().setActive(true)
+        
+        if autoplay {
+            player?.play()
+        }
+        
+        // Configurar PiP si está soportado
+        if AVPictureInPictureController.isPictureInPictureSupported() {
+            if let playerLayer = playerLayer {
+                pipController = AVPictureInPictureController(playerLayer: playerLayer)
+                pipController?.delegate = self
+                print("[PlayerView] ✅ PiP Controller creado y listo")
+            }
+        } else {
+            print("[PlayerView] ⚠️ PiP no está soportado en este dispositivo")
+        }
+    }
+    
+    func startPiP() {
+        guard let pipController = pipController else {
+            print("[PlayerView] ❌ PiP Controller no disponible")
+            sendEvent(["event": "pip_error", "message": "PiP Controller no disponible"])
+            return
+        }
+        
+        guard pipController.isPictureInPicturePossible else {
+            print("[PlayerView] ❌ PiP no es posible en este momento")
+            sendEvent(["event": "pip_error", "message": "PiP no es posible en este momento"])
+            return
+        }
+        
+        pipController.startPictureInPicture()
+    }
+    
+    func stopPiP() {
+        pipController?.stopPictureInPicture()
+    }
+    
+    func play() {
+        player?.play()
+    }
+    
+    func pause() {
+        player?.pause()
+    }
+    
+    func seek(to time: Double) {
+        player?.seek(to: CMTime(seconds: time, preferredTimescale: 600))
+    }
+    
+    func setVolume(_ volume: Float) {
+        player?.volume = volume
+    }
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        playerLayer?.frame = bounds
+    }
+    
+    // MARK: - AVPictureInPictureControllerDelegate
+    
+    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        print("[PlayerView] 🎥 PiP iniciando...")
+        sendEvent(["event": "pip_will_start"])
+    }
+    
+    func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        print("[PlayerView] ✅ PiP iniciado")
+        // Ocultar la vista principal al entrar en PiP
+        self.isHidden = true
+        sendEvent(["event": "pip_started"])
+    }
+    
+    func pictureInPictureControllerWillStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        print("[PlayerView] ⏹️ PiP deteniéndose...")
+        sendEvent(["event": "pip_will_stop"])
+    }
+    
+    func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        print("[PlayerView] 🔁 PiP detenido - restaurando vista original")
+        // Volver a mostrar la vista original al salir del PiP
+        self.isHidden = false
+        sendEvent(["event": "pip_stopped"])
+    }
+    
+    func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        print("[PlayerView] ❌ Error al iniciar PiP: \(error.localizedDescription)")
+        self.isHidden = false
+        sendEvent(["event": "pip_error", "message": error.localizedDescription])
+    }
+    
+    func pictureInPictureController(_ controller: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
+        print("[PlayerView] 🔄 Restaurando interfaz de usuario")
+        // Aquí puedes navegar de vuelta a la pantalla del video si es necesario
+        sendEvent(["event": "pip_restore_ui"])
+        completionHandler(true)
+    }
+    
+    private func sendEvent(_ data: [String: Any]) {
+        var eventData = data
+        eventData["viewId"] = viewId
+        
+        let channel = FlutterEventChannel(name: "advanced_video_player/native_view_events_\(viewId)", binaryMessenger: messenger)
+        // Enviar evento (necesitarías configurar un stream handler por vista)
+        PiPEvents.shared.send(eventData)
+    }
+    
+    deinit {
+        print("[PlayerView] 🗑️ Limpiando player view")
+        player?.pause()
+        player = nil
+        playerLayer?.removeFromSuperlayer()
+        playerLayer = nil
+        pipController?.delegate = nil
+        pipController = nil
+    }
+}
+
+// MARK: - Player View Factory
+@available(iOS 15.0, *)
+class PlayerViewFactory: NSObject, FlutterPlatformViewFactory {
+    private let messenger: FlutterBinaryMessenger
+    
+    init(messenger: FlutterBinaryMessenger) {
+        self.messenger = messenger
+        super.init()
+    }
+    
+    func createArgsCodec() -> FlutterMessageCodec & NSObjectProtocol {
+        FlutterStandardMessageCodec.sharedInstance()
+    }
+    
+    func create(withFrame frame: CGRect, viewIdentifier viewId: Int64, arguments args: Any?) -> FlutterPlatformView {
+        return PlayerViewWrapper(frame: frame, viewId: viewId, messenger: messenger, args: args)
+    }
+}
+
+// MARK: - Player View Wrapper
+@available(iOS 15.0, *)
+class PlayerViewWrapper: NSObject, FlutterPlatformView {
+    private var playerView: PlayerView
+    private let methodChannel: FlutterMethodChannel
+    
+    init(frame: CGRect, viewId: Int64, messenger: FlutterBinaryMessenger, args: Any?) {
+        playerView = PlayerView(frame: frame, viewId: viewId, messenger: messenger)
+        methodChannel = FlutterMethodChannel(name: "advanced_video_player/native_view_\(viewId)", binaryMessenger: messenger)
+        
+        super.init()
+        
+        // Configurar el player si se proporciona URL
+        if let dict = args as? [String: Any] {
+            if let urlStr = dict["url"] as? String, let url = URL(string: urlStr) {
+                let autoplay = dict["autoplay"] as? Bool ?? true
+                playerView.setup(with: url, autoplay: autoplay)
+            }
+        }
+        
+        // Configurar el canal de métodos
+        methodChannel.setMethodCallHandler { [weak self] (call, result) in
+            self?.handleMethodCall(call, result: result)
+        }
+    }
+    
+    func view() -> UIView {
+        return playerView
+    }
+    
+    private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        switch call.method {
+        case "startPiP":
+            playerView.startPiP()
+            result(nil)
+            
+        case "stopPiP":
+            playerView.stopPiP()
+            result(nil)
+            
+        case "play":
+            playerView.play()
+            result(nil)
+            
+        case "pause":
+            playerView.pause()
+            result(nil)
+            
+        case "seek":
+            if let args = call.arguments as? [String: Any],
+               let time = args["time"] as? Double {
+                playerView.seek(to: time)
+                result(nil)
+            } else {
+                result(FlutterError(code: "bad_args", message: "Tiempo inválido", details: nil))
+            }
+            
+        case "setVolume":
+            if let args = call.arguments as? [String: Any],
+               let volume = args["volume"] as? Double {
+                playerView.setVolume(Float(volume))
+                result(nil)
+            } else {
+                result(FlutterError(code: "bad_args", message: "Volumen inválido", details: nil))
+            }
+            
+        case "setUrl":
+            if let args = call.arguments as? [String: Any],
+               let urlStr = args["url"] as? String,
+               let url = URL(string: urlStr) {
+                let autoplay = args["autoplay"] as? Bool ?? true
+                playerView.setup(with: url, autoplay: autoplay)
+                result(nil)
+            } else {
+                result(FlutterError(code: "bad_args", message: "URL inválida", details: nil))
+            }
+            
+        default:
+            result(FlutterMethodNotImplemented)
+        }
     }
 }

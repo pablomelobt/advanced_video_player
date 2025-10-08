@@ -3,15 +3,49 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 /// Estados de la conexión de compartir pantalla
+///
+/// Define los diferentes estados en los que puede encontrarse
+/// una conexión de compartir pantalla.
 enum ScreenSharingState {
+  /// No hay conexión activa
   disconnected,
+
+  /// Estableciendo conexión con un dispositivo
   connecting,
+
+  /// Conectado exitosamente a un dispositivo
   connected,
+
+  /// Error en la conexión o durante el uso
   error,
 }
 
 /// Servicio para manejar el compartir pantalla (SharePlay en iOS, Google Cast en Android)
-/// Implementado usando canales de método nativos sin dependencias externas
+///
+/// Este servicio permite compartir videos con otros dispositivos usando
+/// tecnologías nativas de cada plataforma:
+/// - **iOS**: SharePlay para compartir con otros dispositivos Apple
+/// - **Android**: Google Cast para transmitir a Chromecast y Smart TVs
+///
+/// Implementado usando canales de método nativos sin dependencias externas.
+///
+/// Ejemplo de uso:
+/// ```dart
+/// final service = ScreenSharingService();
+/// await service.initialize();
+///
+/// // Buscar dispositivos disponibles
+/// final devices = await service.discoverDevices();
+///
+/// // Conectar a un dispositivo
+/// await service.connectToDevice(deviceId, deviceName);
+///
+/// // Compartir un video
+/// await service.shareVideo(
+///   videoUrl: 'https://example.com/video.mp4',
+///   title: 'Mi Video',
+/// );
+/// ```
 class ScreenSharingService {
   static const MethodChannel _channel = MethodChannel('screen_sharing');
 
