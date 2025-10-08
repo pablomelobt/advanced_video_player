@@ -1,0 +1,19 @@
+# === PUB.IGNORE ===
+# Archivos locales o generados
+example/android/local.properties
+example/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+
+# Carpetas que no deben publicarse
+build/
+.dart_tool/
+.idea/
+.vscode/
+android/.gradle/
+ios/Pods/
+docs/  # En caso de que quede rastros antiguos
+
+# Archivos temporales
+*.iml
+*.lock
+*.log
+*.DS_Store

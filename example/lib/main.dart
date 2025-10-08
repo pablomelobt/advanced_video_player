@@ -168,6 +168,9 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                     true, // SharePlay (iOS) / Google Cast (Android)
                 enableAirPlay: true, // Solo iOS
 
+                // 🆕 NUEVO: Usar reproductor nativo en iOS para mejor PiP
+                useNativePlayerOnIOS: true,
+
                 // Metadatos del video
                 videoTitle: 'Big Buck Bunny - Demostración',
                 videoDescription:
@@ -282,10 +285,10 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                   width: 1,
                 ),
               ),
-              child: Column(
+              child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Información del Video',
                     style: TextStyle(
                       color: Colors.white,
@@ -293,23 +296,23 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
+                  SizedBox(height: 12),
+                  Text(
                     'Video de demostración: Big Buck Bunny',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 14,
                     ),
                   ),
-                  const Text(
+                  Text(
                     'Fuente: Google Cloud Storage',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 14,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
+                  SizedBox(height: 8),
+                  Text(
                     'Nuevas funcionalidades:',
                     style: TextStyle(
                       color: Colors.white,
@@ -317,39 +320,18 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const Text(
+                  Text(
                     '• SharePlay para iOS (compartir en tiempo real)',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 12,
                     ),
                   ),
-                  const Text(
+                  Text(
                     '• Google Cast para Android (Chromecast)',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      // Aquí podrías agregar funcionalidad para cambiar el video
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'Funcionalidad de cambio de video próximamente'),
-                          backgroundColor: Color(0xFF6366F1),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.video_library),
-                    label: const Text('Cambiar Video'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6366F1),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
                     ),
                   ),
                 ],

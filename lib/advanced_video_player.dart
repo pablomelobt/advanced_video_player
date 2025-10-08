@@ -11,6 +11,9 @@ import 'fullscreen_video_page.dart';
 import 'picture_in_picture_service.dart';
 import 'screen_sharing_service.dart';
 import 'airplay_button.dart';
+import 'native_video_player.dart';
+
+export 'native_video_player.dart';
 
 /// Un reproductor de video avanzado con controles modernos y atractivos
 class AdvancedVideoPlayer extends StatefulWidget {
@@ -50,6 +53,12 @@ class AdvancedVideoPlayer extends StatefulWidget {
   /// Color secundario del reproductor
   final Color secondaryColor;
 
+  /// Si es true, usa el reproductor nativo en iOS (mejor para PiP)
+  final bool useNativePlayerOnIOS;
+
+  /// Si es true, abre automáticamente en pantalla completa al iniciar
+  final bool autoEnterFullscreen;
+
   const AdvancedVideoPlayer({
     super.key,
     required this.videoSource,
@@ -64,6 +73,8 @@ class AdvancedVideoPlayer extends StatefulWidget {
     this.videoDescription,
     this.primaryColor = const Color(0xFF6366F1),
     this.secondaryColor = const Color(0xFF8B5CF6),
+    this.useNativePlayerOnIOS = false,
+    this.autoEnterFullscreen = false,
   });
 
   @override
@@ -73,6 +84,7 @@ class AdvancedVideoPlayer extends StatefulWidget {
 class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     with TickerProviderStateMixin {
   VideoPlayerController? _controller;
+  NativeVideoPlayerController? _nativeController;
   bool _isPlaying = false;
   bool _showControls = true;
   bool _isLoading = true;
@@ -91,6 +103,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   String? _currentPairingCode;
   bool _isPairing = false;
   Timer? _pairingTimer;
+
+  // Getter para saber si estamos usando el reproductor nativo
+  bool get _useNativePlayer => widget.useNativePlayerOnIOS && Platform.isIOS;
 
   late AnimationController _controlsAnimationController;
   late Animation<double> _controlsAnimation;
@@ -252,6 +267,22 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         _hasError = false;
       });
 
+      // Si usamos el reproductor nativo, no inicializamos el VideoPlayerController
+      if (_useNativePlayer) {
+        // El NativeVideoPlayer se inicializa en fullscreen
+        setState(() {
+          _isLoading = false;
+        });
+
+        // Auto-abrir en fullscreen
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            _toggleFullscreen();
+          }
+        });
+        return;
+      }
+
       // Dispose del controller anterior si existe
       if (_controller != null && _controller!.value.isInitialized) {
         await _controller!.dispose();
@@ -283,6 +314,15 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       });
 
       _showControlsTemporarily();
+
+      // Auto entrar en pantalla completa si está habilitado
+      if (widget.autoEnterFullscreen && !_isFullscreen) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _toggleFullscreen();
+          }
+        });
+      }
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -328,7 +368,27 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     }
   }
 
-  void _togglePlayPause() {
+  void _togglePlayPause() async {
+    if (_useNativePlayer) {
+      // Modo nativo
+      if (_nativeController == null) {
+        return;
+      }
+
+      setState(() {
+        if (_isPlaying) {
+          _nativeController!.pause();
+          _isPlaying = false;
+        } else {
+          _nativeController!.play();
+          _isPlaying = true;
+        }
+      });
+      _showControlsTemporarily();
+      return;
+    }
+
+    // Modo estándar
     if (_controller == null || !_controller!.value.isInitialized) {
       _initializeVideoPlayer();
       return;
@@ -375,6 +435,22 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   void _toggleFullscreen() async {
+    // Si estamos usando el reproductor nativo, abrir página fullscreen con NativeVideoPlayer
+    if (_useNativePlayer) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => _NativeFullscreenPage(
+            url: widget.videoSource,
+            primaryColor: widget.primaryColor,
+            secondaryColor: widget.secondaryColor,
+            enablePictureInPicture: widget.enablePictureInPicture,
+          ),
+          fullscreenDialog: true,
+        ),
+      );
+      return;
+    }
+
     if (!_isFullscreen) {
       // Navegar a pantalla completa
       await Navigator.of(context).push(
@@ -424,6 +500,36 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   void _enterPictureInPicture() async {
+    // Si estamos usando el reproductor nativo
+    if (_useNativePlayer) {
+      if (_nativeController == null) {
+        return;
+      }
+
+      try {
+        await _nativeController!.startPiP();
+
+        // Esperar un momento para que PiP se active
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        // Minimizar la app al background (ir al home) - Solo en iOS
+        if (mounted && Platform.isIOS) {
+          SystemNavigator.pop();
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error activando PiP: $e'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Modo estándar
     if (_controller == null || !_controller!.value.isInitialized) {
       return;
     }
@@ -585,8 +691,11 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Video
-        if (_isLoading ||
+        // Video - Nativo o estándar
+        if (_useNativePlayer)
+          // Para reproductor nativo: mostrar placeholder y botón para abrir fullscreen
+          _buildNativePlaceholder()
+        else if (_isLoading ||
             _controller == null ||
             !_controller!.value.isInitialized)
           _buildLoadingWidget()
@@ -595,8 +704,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
         // Controles overlay
         if (!_isLoading &&
-            _controller != null &&
-            _controller!.value.isInitialized)
+            (!_useNativePlayer &&
+                _controller != null &&
+                _controller!.value.isInitialized))
           AnimatedBuilder(
             animation: _controlsAnimation,
             builder: (context, child) {
@@ -610,12 +720,66 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     );
   }
 
+  Widget _buildNativePlaceholder() {
+    return GestureDetector(
+      onTap: () {
+        _toggleFullscreen();
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [widget.primaryColor, widget.secondaryColor],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.play_circle_filled,
+                size: 80,
+                color: Colors.white.withOpacity(0.9),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Toca para reproducir en pantalla completa',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFullscreenVideo() {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Video en pantalla completa
-        if (_isLoading ||
+        // Video en pantalla completa - Nativo o estándar
+        if (_useNativePlayer)
+          // Reproductor nativo
+          NativeVideoPlayer(
+            url: widget.videoSource,
+            autoplay: true,
+            onViewCreated: (controller) {
+              if (_nativeController == null) {
+                setState(() {
+                  _nativeController = controller;
+                  _isPlaying = true;
+                  _isLoading = false;
+                  _isPictureInPictureSupported = true;
+                });
+              }
+            },
+          )
+        else if (_isLoading ||
             _controller == null ||
             !_controller!.value.isInitialized)
           _buildLoadingWidget()
@@ -624,8 +788,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
         // Controles overlay para pantalla completa
         if (!_isLoading &&
-            _controller != null &&
-            _controller!.value.isInitialized)
+            (_useNativePlayer
+                ? _nativeController != null
+                : (_controller != null && _controller!.value.isInitialized)))
           AnimatedBuilder(
             animation: _controlsAnimation,
             builder: (context, child) {
@@ -1796,6 +1961,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     _pairingTimer?.cancel();
     _controlsAnimationController.dispose();
     _controller?.dispose();
+    _nativeController?.dispose();
     _screenSharingStateSubscription?.cancel();
     _screenSharingErrorSubscription?.cancel();
     _screenSharingService?.dispose();
@@ -1804,6 +1970,277 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     }
+    super.dispose();
+  }
+}
+
+/// Página de pantalla completa para el reproductor nativo
+class _NativeFullscreenPage extends StatefulWidget {
+  final String url;
+  final Color primaryColor;
+  final Color secondaryColor;
+  final bool enablePictureInPicture;
+
+  const _NativeFullscreenPage({
+    required this.url,
+    required this.primaryColor,
+    required this.secondaryColor,
+    required this.enablePictureInPicture,
+  });
+
+  @override
+  State<_NativeFullscreenPage> createState() => _NativeFullscreenPageState();
+}
+
+class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
+  NativeVideoPlayerController? _controller;
+  bool _showControls = true;
+  bool _isPlaying = true;
+  Timer? _hideControlsTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Configurar pantalla completa
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    _startHideControlsTimer();
+  }
+
+  void _startHideControlsTimer() {
+    _hideControlsTimer?.cancel();
+    _hideControlsTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _showControls = false;
+        });
+      }
+    });
+  }
+
+  void _toggleControls() {
+    setState(() {
+      _showControls = !_showControls;
+    });
+    if (_showControls) {
+      _startHideControlsTimer();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Reproductor nativo
+          NativeVideoPlayer(
+            url: widget.url,
+            autoplay: true,
+            onViewCreated: (controller) {
+              setState(() {
+                _controller = controller;
+              });
+            },
+          ),
+
+          // Capa invisible para capturar toques
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: _toggleControls,
+              behavior: HitTestBehavior.translucent,
+              child: Container(
+                color: Colors.transparent,
+              ),
+            ),
+          ),
+
+          // Controles overlay
+          if (_showControls)
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.7),
+                    Colors.transparent,
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.7),
+                  ],
+                ),
+              ),
+              child: SafeArea(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Header - Botón atrás
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back_ios_new,
+                                color: Colors.white, size: 28),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                          const Spacer(),
+                          Row(
+                            children: [
+                              // Botón AirPlay nativo
+                              if (Platform.isIOS)
+                                const AirPlayButton(
+                                  width: 40,
+                                  height: 40,
+                                ),
+                              if (Platform.isIOS) const SizedBox(width: 8),
+                              // Botón PiP
+                              if (widget.enablePictureInPicture)
+                                _buildActionButton(
+                                  icon: Icons.picture_in_picture_alt,
+                                  label: '',
+                                  onPressed: () async {
+                                    if (_controller != null) {
+                                      final messenger =
+                                          ScaffoldMessenger.of(context);
+                                      try {
+                                        await _controller!.startPiP();
+                                        await Future.delayed(
+                                            const Duration(milliseconds: 500));
+
+                                        if (mounted && Platform.isIOS) {
+                                          SystemNavigator.pop();
+                                        }
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text('Error: $e'),
+                                            backgroundColor: Colors.red,
+                                            duration:
+                                                const Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Controles centrales
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Retroceder
+                        _buildCircularButton(
+                          icon: Icons.replay_10,
+                          onPressed: () {
+                            if (_controller != null) {
+                              _controller!.seek(0);
+                              _startHideControlsTimer();
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 40),
+                        // Play/Pause
+                        _buildCircularButton(
+                          icon: _isPlaying ? Icons.pause : Icons.play_arrow,
+                          size: 70,
+                          onPressed: () {
+                            if (_controller != null) {
+                              if (_isPlaying) {
+                                _controller!.pause();
+                              } else {
+                                _controller!.play();
+                              }
+                              setState(() {
+                                _isPlaying = !_isPlaying;
+                              });
+                              _startHideControlsTimer();
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 40),
+                        // Avanzar
+                        _buildCircularButton(
+                          icon: Icons.forward_10,
+                          onPressed: () {
+                            if (_controller != null) {
+                              _startHideControlsTimer();
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+
+                    // Footer
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCircularButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    double size = 50,
+  }) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.black.withOpacity(0.5),
+        border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: Colors.white),
+        iconSize: size * 0.5,
+        onPressed: onPressed,
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: Icon(icon, color: Colors.white, size: 25),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _hideControlsTimer?.cancel();
+    _controller?.dispose();
+    // Restaurar orientación
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 }

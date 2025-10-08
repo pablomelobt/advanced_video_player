@@ -1,6 +1,25 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 
+/// Servicio para manejar Picture-in-Picture (PiP) en dispositivos móviles
+///
+/// Este servicio proporciona funcionalidades para activar y controlar
+/// el modo Picture-in-Picture en videos, permitiendo que el usuario
+/// continúe viendo el contenido mientras usa otras aplicaciones.
+///
+/// Ejemplo de uso:
+/// ```dart
+/// // Verificar si PiP está soportado
+/// bool supported = await PictureInPictureService.isPictureInPictureSupported();
+///
+/// if (supported) {
+///   // Activar PiP
+///   bool success = await PictureInPictureService.enterPictureInPictureMode(
+///     width: 400.0,
+///     height: 225.0,
+///   );
+/// }
+/// ```
 class PictureInPictureService {
   static const MethodChannel _channel =
       MethodChannel('picture_in_picture_service');
@@ -8,6 +27,11 @@ class PictureInPictureService {
       EventChannel('picture_in_picture_service_events');
 
   /// Verifica si el dispositivo soporta Picture-in-Picture
+  ///
+  /// Retorna `true` si el dispositivo y la versión del sistema operativo
+  /// soportan Picture-in-Picture, `false` en caso contrario.
+  ///
+  /// En Android requiere API 24+ y en iOS requiere iOS 14+.
   static Future<bool> isPictureInPictureSupported() async {
     try {
       final bool supported =
@@ -20,6 +44,11 @@ class PictureInPictureService {
   }
 
   /// Activa el modo Picture-in-Picture
+  ///
+  /// [width] y [height] especifican las dimensiones de la ventana PiP.
+  /// Se recomienda usar una proporción de aspecto 16:9 para videos.
+  ///
+  /// Retorna `true` si se activó exitosamente, `false` en caso contrario.
   static Future<bool> enterPictureInPictureMode({
     required double width,
     required double height,
@@ -71,6 +100,9 @@ class PictureInPictureService {
   }
 
   /// Stream para escuchar cambios en el estado de Picture-in-Picture
+  ///
+  /// Emite `true` cuando se activa PiP y `false` cuando se desactiva.
+  /// Útil para actualizar la UI según el estado actual de PiP.
   static Stream<bool> get pictureInPictureModeStream {
     return _eventChannel.receiveBroadcastStream().map((dynamic event) {
       if (event is bool) {
