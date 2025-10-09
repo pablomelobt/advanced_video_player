@@ -51,14 +51,22 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
   Timer? _hideControlsTimer;
   Timer? _pipStateTimer;
   Timer? _hideAirPlayTimer;
-  StreamSubscription<bool>? _pipModeSubscription;
+  StreamSubscription<dynamic>? _pipModeSubscription;
   StreamSubscription<ScreenSharingState>? _screenSharingStateSubscription;
   StreamSubscription<String>? _screenSharingErrorSubscription;
   ScreenSharingService? _screenSharingService;
 
+  // Variables para el arrastre de la barra de progreso
+  bool _isDraggingProgressBar = false;
+  double _dragProgress = 0.0;
+
   @override
   void initState() {
     super.initState();
+    // Inicializar servicio PiP con callback
+    PictureInPictureService.initialize();
+    PictureInPictureService.setOnPipControlListener(_handlePipControlEvent);
+
     _setupFullscreen();
     _setupAnimations();
     _setupVideoListener();
@@ -80,12 +88,27 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
   }
 
   void _setupPictureInPictureListener() {
-    _pipModeSubscription = PictureInPictureService.pictureInPictureModeStream
-        .listen((isInPipMode) {
-      if (mounted) {
+    // Escuchar eventos de PiP (cambios de estado y controles)
+    _pipModeSubscription =
+        PictureInPictureService.pictureInPictureEventStream.listen((event) {
+      if (!mounted) return;
+
+      // Si es un boolean simple, es un cambio de estado de PiP
+      if (event is bool) {
         setState(() {
-          _isInPictureInPictureMode = isInPipMode;
+          _isInPictureInPictureMode = event;
         });
+        return;
+      }
+
+      // Si es un Map, puede ser un evento de control (desde Android)
+      if (event is Map) {
+        final type = event['type'] as String?;
+        final action = event['action'] as String?;
+
+        if (type == 'control' && action != null) {
+          _handlePipControlEvent(action);
+        }
       }
     });
 
@@ -213,9 +236,66 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
 
   void _videoListener() {
     if (!mounted) return;
-    setState(() {
-      _isPlaying = widget.controller.value.isPlaying;
-    });
+    final newPlayingState = widget.controller.value.isPlaying;
+    if (_isPlaying != newPlayingState) {
+      setState(() {
+        _isPlaying = newPlayingState;
+      });
+      _updatePipPlaybackState(newPlayingState);
+    }
+  }
+
+  void _handlePipControlEvent(String action) {
+    if (!mounted) return;
+
+    debugPrint('[FullscreenVideoPage] Control PiP recibido: $action');
+
+    switch (action) {
+      case 'play':
+        widget.controller.play();
+        setState(() => _isPlaying = true);
+        _updatePipPlaybackState(true);
+        break;
+      case 'pause':
+        widget.controller.pause();
+        setState(() => _isPlaying = false);
+        _updatePipPlaybackState(false);
+        break;
+      case 'play_pause':
+        // Toggle play/pause para controles nativos de Android
+        if (_isPlaying) {
+          widget.controller.pause();
+          setState(() => _isPlaying = false);
+          _updatePipPlaybackState(false);
+        } else {
+          widget.controller.play();
+          setState(() => _isPlaying = true);
+          _updatePipPlaybackState(true);
+        }
+        break;
+      case 'replay10':
+        final currentPosition = widget.controller.value.position;
+        final newPosition =
+            currentPosition - Duration(seconds: widget.skipDuration);
+        widget.controller
+            .seekTo(newPosition < Duration.zero ? Duration.zero : newPosition);
+        break;
+      case 'forward10':
+        final currentPosition = widget.controller.value.position;
+        final duration = widget.controller.value.duration;
+        final newPosition =
+            currentPosition + Duration(seconds: widget.skipDuration);
+        widget.controller
+            .seekTo(newPosition > duration ? duration : newPosition);
+        break;
+    }
+  }
+
+  void _updatePipPlaybackState(bool isPlaying) {
+    // Solo actualizar en Android cuando está en modo PiP
+    if (Platform.isAndroid && _isInPictureInPictureMode) {
+      PictureInPictureService.updatePlaybackState(isPlaying: isPlaying);
+    }
   }
 
   void _togglePlayPause() {
@@ -223,9 +303,11 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
       if (_isPlaying) {
         widget.controller.pause();
         _isPlaying = false;
+        _updatePipPlaybackState(false);
       } else {
         widget.controller.play();
         _isPlaying = true;
+        _updatePipPlaybackState(true);
       }
     });
     _showControlsTemporarily();
@@ -271,23 +353,24 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     }
 
     try {
-      await PictureInPictureService.enterPictureInPictureMode(
-        width: 300.0,
-        height: 200.0,
+      final aspectRatio = widget.controller.value.aspectRatio;
+      const width = 400.0;
+      final height = width / aspectRatio;
+
+      final success = await PictureInPictureService.enterPictureInPictureMode(
+        width: width,
+        height: height,
+        isPlaying:
+            _isPlaying, // Pasar estado de reproducción para controles nativos
       );
 
-      // if (mounted) {
-      //   if (success) {
-      //   } else {
-      //     ScaffoldMessenger.of(context).showSnackBar(
-      //       const SnackBar(
-      //         content: Text(
-      //             'No se pudo activar Picture-in-Picture, vuelve a intentar mas tarde'),
-      //         duration: Duration(seconds: 2),
-      //       ),
-      //     );
-      //   }
-      // }
+      if (!mounted) return;
+      if (success) {
+        debugPrint(
+            'Picture-in-Picture activado con controles nativos (Android)');
+      } else {
+        debugPrint('No se pudo activar Picture-in-Picture');
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -301,6 +384,11 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
   }
 
   void _showControlsTemporarily() {
+    // No mostrar controles si está en modo PiP
+    if (_isInPictureInPictureMode) {
+      return;
+    }
+
     setState(() {
       _showControls = true;
     });
@@ -346,38 +434,84 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Video en pantalla completa
-            VideoPlayer(widget.controller),
+            // Video en pantalla completa - centrado y con aspect ratio correcto
+            Center(
+              child: AspectRatio(
+                aspectRatio: widget.controller.value.aspectRatio,
+                child: VideoPlayer(widget.controller),
+              ),
+            ),
+
+            // Indicador de carga cuando el video está inicializando o buffering
+            if (!widget.controller.value.isInitialized ||
+                widget.controller.value.isBuffering)
+              Container(
+                color: Colors.black.withOpacity(0.6),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        strokeWidth: 3,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        widget.controller.value.isBuffering
+                            ? 'Cargando...'
+                            : 'Cargando video...',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
 
             // Controles overlay
-            AnimatedBuilder(
-              animation: _controlsAnimation,
-              builder: (context, child) {
-                return Opacity(
-                  opacity: _showControls ? 1.0 : 0.0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.3),
-                          Colors.transparent,
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.5),
-                        ],
-                        stops: const [0.0, 0.3, 0.7, 1.0],
+            // No mostrar controles en modo PiP para evitar overflow
+            if (!_isInPictureInPictureMode)
+              AnimatedBuilder(
+                animation: _controlsAnimation,
+                builder: (context, child) {
+                  return Opacity(
+                    opacity: _showControls ? 1.0 : 0.0,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.3),
+                            Colors.transparent,
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.5),
+                          ],
+                          stops: const [0.0, 0.3, 0.7, 1.0],
+                        ),
                       ),
-                    ),
-                    child: SafeArea(
-                      child: _isInPictureInPictureMode
-                          ? const SizedBox.shrink()
-                          : Column(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
+                      child: SafeArea(
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  // Botón de regresar en la izquierda (solo Android)
+                                  if (Platform.isAndroid)
+                                    _buildControlButton(
+                                      icon: Icons.arrow_back,
+                                      onPressed: _exitFullscreen,
+                                      tooltip: 'Regresar',
+                                      size: 40,
+                                    ),
+                                  // Controles de la derecha
+                                  Row(
                                     children: [
                                       if (Platform.isIOS)
                                         AirPlayStatusButton(
@@ -433,207 +567,257 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                                       ),
                                     ],
                                   ),
+                                ],
+                              ),
+                            ),
+                            const Spacer(),
+                            // Controles centrales
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                _buildControlButton(
+                                  icon: Icons.replay_10,
+                                  onPressed: _skipBackward,
+                                  tooltip: 'Retroceder ${widget.skipDuration}s',
+                                  size: 45,
+                                  iconSize: 40,
                                 ),
-                                const Spacer(),
-                                // Controles centrales
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    _buildControlButton(
-                                      icon: Icons.replay_10,
-                                      onPressed: _skipBackward,
-                                      tooltip:
-                                          'Retroceder ${widget.skipDuration}s',
-                                      size: 45,
-                                      iconSize: 40,
-                                    ),
-                                    _buildControlButton(
-                                      icon: _isPlaying
-                                          ? Icons.pause_circle_filled
-                                          : Icons.play_circle_filled,
-                                      onPressed: _togglePlayPause,
-                                      tooltip:
-                                          _isPlaying ? 'Pausar' : 'Reproducir',
-                                      size: 65,
-                                      iconSize: 60,
-                                    ),
-                                    _buildControlButton(
-                                      icon: Icons.forward_10,
-                                      onPressed: _skipForward,
-                                      tooltip:
-                                          'Avanzar ${widget.skipDuration}s',
-                                      size: 45,
-                                      iconSize: 40,
-                                    ),
-                                  ],
+                                _buildControlButton(
+                                  icon: _isPlaying
+                                      ? Icons.pause_circle_filled
+                                      : Icons.play_circle_filled,
+                                  onPressed: _togglePlayPause,
+                                  tooltip: _isPlaying ? 'Pausar' : 'Reproducir',
+                                  size: 65,
+                                  iconSize: 60,
                                 ),
-                                const Spacer(),
-                                // Barra inferior
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Column(
-                                    children: [
-                                      LayoutBuilder(
-                                        builder: (layoutContext, constraints) {
-                                          final width = constraints.maxWidth;
+                                _buildControlButton(
+                                  icon: Icons.forward_10,
+                                  onPressed: _skipForward,
+                                  tooltip: 'Avanzar ${widget.skipDuration}s',
+                                  size: 45,
+                                  iconSize: 40,
+                                ),
+                              ],
+                            ),
+                            const Spacer(),
+                            // Barra inferior
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                children: [
+                                  LayoutBuilder(
+                                    builder: (layoutContext, constraints) {
+                                      final width = constraints.maxWidth;
 
-                                          return GestureDetector(
-                                            behavior:
-                                                HitTestBehavior.translucent,
-                                            onTapDown: (details) {
-                                              final localDx = details
-                                                  .localPosition.dx
-                                                  .clamp(0, width);
-                                              final relative = localDx / width;
-                                              final duration = widget
-                                                  .controller.value.duration;
-                                              if (duration.inMilliseconds > 0) {
-                                                widget.controller.seekTo(
-                                                    duration * relative);
-                                              }
-                                            },
-                                            child: ValueListenableBuilder<
-                                                VideoPlayerValue>(
-                                              valueListenable:
-                                                  widget.controller,
-                                              builder: (context, value, _) {
-                                                final position = value.position;
-                                                final duration = value.duration;
-                                                final progress = duration
-                                                            .inMilliseconds >
-                                                        0
+                                      return GestureDetector(
+                                        behavior: HitTestBehavior.translucent,
+                                        onHorizontalDragStart: (details) {
+                                          setState(() {
+                                            _isDraggingProgressBar = true;
+                                            final localDx = details
+                                                .localPosition.dx
+                                                .clamp(0.0, width);
+                                            _dragProgress = (localDx / width)
+                                                .clamp(0.0, 1.0);
+                                          });
+                                          // Cancelar el timer de ocultar controles mientras se arrastra
+                                          _hideControlsTimer?.cancel();
+                                        },
+                                        onHorizontalDragUpdate: (details) {
+                                          setState(() {
+                                            final localDx = details
+                                                .localPosition.dx
+                                                .clamp(0.0, width);
+                                            _dragProgress = (localDx / width)
+                                                .clamp(0.0, 1.0);
+                                          });
+                                        },
+                                        onHorizontalDragEnd: (details) {
+                                          final duration =
+                                              widget.controller.value.duration;
+                                          if (duration.inMilliseconds > 0) {
+                                            widget.controller.seekTo(
+                                                duration * _dragProgress);
+                                          }
+                                          setState(() {
+                                            _isDraggingProgressBar = false;
+                                          });
+                                          // Reiniciar el timer para ocultar controles
+                                          _showControlsTemporarily();
+                                        },
+                                        onTapDown: (details) {
+                                          final localDx = details
+                                              .localPosition.dx
+                                              .clamp(0.0, width);
+                                          final relative =
+                                              (localDx / width).clamp(0.0, 1.0);
+                                          final duration =
+                                              widget.controller.value.duration;
+                                          if (duration.inMilliseconds > 0) {
+                                            widget.controller
+                                                .seekTo(duration * relative);
+                                          }
+                                        },
+                                        child: ValueListenableBuilder<
+                                            VideoPlayerValue>(
+                                          valueListenable: widget.controller,
+                                          builder: (context, value, _) {
+                                            final position = value.position;
+                                            final duration = value.duration;
+                                            final videoProgress =
+                                                duration.inMilliseconds > 0
                                                     ? (position.inMilliseconds /
                                                             duration
                                                                 .inMilliseconds)
                                                         .clamp(0.0, 1.0)
                                                     : 0.0;
 
-                                                return Container(
-                                                  // 🔹 altura táctil cómoda, pero barra pegada abajo
-                                                  height: 28,
-                                                  alignment:
-                                                      Alignment.bottomCenter,
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
+                                            // Usar el progreso del arrastre si está arrastrando,
+                                            // de lo contrario usar el progreso del video
+                                            final displayProgress =
+                                                _isDraggingProgressBar
+                                                    ? _dragProgress
+                                                    : videoProgress;
+
+                                            return Container(
+                                              height: 28,
+                                              alignment: Alignment.bottomCenter,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
                                                       horizontal: 0,
                                                       vertical: 8),
-                                                  child: Stack(
+                                              child: Stack(
+                                                alignment: Alignment.centerLeft,
+                                                children: [
+                                                  // Fondo gris translúcido
+                                                  Container(
+                                                    height: 3,
+                                                    width: width,
+                                                    decoration: BoxDecoration(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              2),
+                                                      color: Colors.white
+                                                          .withOpacity(0.25),
+                                                    ),
+                                                  ),
+                                                  // Progreso naranja (YouTube-style)
+                                                  FractionallySizedBox(
                                                     alignment:
                                                         Alignment.centerLeft,
-                                                    children: [
-                                                      // Fondo gris translúcido
-                                                      Container(
-                                                        height: 3,
-                                                        width: width,
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(2),
-                                                          color: Colors.white
-                                                              .withOpacity(
-                                                                  0.25),
+                                                    widthFactor:
+                                                        displayProgress,
+                                                    child: Container(
+                                                      height: 3,
+                                                      decoration: BoxDecoration(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(2),
+                                                        gradient:
+                                                            LinearGradient(
+                                                          colors: [
+                                                            widget.primaryColor,
+                                                            widget
+                                                                .secondaryColor
+                                                          ],
                                                         ),
                                                       ),
-                                                      // Progreso naranja (YouTube-style)
-                                                      FractionallySizedBox(
-                                                        alignment: Alignment
-                                                            .centerLeft,
-                                                        widthFactor: progress,
-                                                        child: Container(
-                                                          height: 3,
-                                                          decoration:
-                                                              BoxDecoration(
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                        2),
-                                                            gradient:
-                                                                LinearGradient(
-                                                              colors: [
-                                                                widget
-                                                                    .primaryColor,
-                                                                widget
-                                                                    .secondaryColor
-                                                              ],
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      // Thumb circular pequeño
-                                                      Positioned(
-                                                        left:
-                                                            (width * progress) -
-                                                                6,
-                                                        bottom: -4,
-                                                        child: Container(
-                                                          width: 12,
-                                                          height: 12,
-                                                          decoration:
-                                                              BoxDecoration(
-                                                            color: Colors.white,
-                                                            shape:
-                                                                BoxShape.circle,
-                                                            boxShadow: [
-                                                              BoxShadow(
-                                                                color: Colors
-                                                                    .black
-                                                                    .withOpacity(
-                                                                        0.3),
-                                                                blurRadius: 3,
-                                                                offset:
-                                                                    const Offset(
-                                                                        0, 1),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
+                                                    ),
                                                   ),
-                                                );
-                                              },
-                                            ),
-                                          );
-                                        },
-                                      ),
+                                                  // Thumb circular - más grande cuando se arrastra
+                                                  Positioned(
+                                                    left: (width *
+                                                            displayProgress) -
+                                                        (_isDraggingProgressBar
+                                                            ? 8
+                                                            : 6),
+                                                    bottom:
+                                                        _isDraggingProgressBar
+                                                            ? -6
+                                                            : -4,
+                                                    child: AnimatedContainer(
+                                                      duration: const Duration(
+                                                          milliseconds: 100),
+                                                      width:
+                                                          _isDraggingProgressBar
+                                                              ? 16
+                                                              : 12,
+                                                      height:
+                                                          _isDraggingProgressBar
+                                                              ? 16
+                                                              : 12,
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white,
+                                                        shape: BoxShape.circle,
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: Colors.black
+                                                                .withOpacity(
+                                                                    0.3),
+                                                            blurRadius: 3,
+                                                            offset:
+                                                                const Offset(
+                                                                    0, 1),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      );
+                                    },
+                                  ),
 
-                                      const SizedBox(height: 12),
-                                      // Tiempo y duración
-                                      Row(
+                                  const SizedBox(height: 12),
+                                  // Tiempo y duración
+                                  ValueListenableBuilder<VideoPlayerValue>(
+                                    valueListenable: widget.controller,
+                                    builder: (context, value, _) {
+                                      final currentPosition =
+                                          _isDraggingProgressBar
+                                              ? value.duration * _dragProgress
+                                              : value.position;
+
+                                      return Row(
                                         mainAxisAlignment:
                                             MainAxisAlignment.spaceBetween,
                                         children: [
                                           Text(
-                                            _formatDuration(widget
-                                                .controller.value.position),
-                                            style: const TextStyle(
-                                              color: Colors.white,
+                                            _formatDuration(currentPosition),
+                                            style: TextStyle(
+                                              color: _isDraggingProgressBar
+                                                  ? widget.primaryColor
+                                                  : Colors.white,
                                               fontSize: 14,
                                               fontWeight: FontWeight.w500,
                                             ),
                                           ),
                                           Text(
-                                            _formatDuration(widget
-                                                .controller.value.duration),
+                                            _formatDuration(value.duration),
                                             style: const TextStyle(
                                               color: Colors.white70,
                                               fontSize: 14,
                                             ),
                                           ),
                                         ],
-                                      ),
-                                    ],
+                                      );
+                                    },
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
           ],
         ),
       ),

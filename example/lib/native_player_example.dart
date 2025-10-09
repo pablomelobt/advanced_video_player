@@ -40,6 +40,46 @@ class _NativePlayerExampleState extends State<NativePlayerExample> {
                     _isPlaying = true;
                   });
                 },
+                onPipStarted: () {
+                  debugPrint('[NativePlayerExample] 🎥 PiP iniciado');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('PiP activado - Video flotante'),
+                        backgroundColor: Colors.green,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
+                onPipStopped: () {
+                  debugPrint('[NativePlayerExample] ⏹️ PiP detenido');
+                },
+                onPipRestoreToFullscreen: () {
+                  debugPrint(
+                      '[NativePlayerExample] 🎬 Restaurando a fullscreen desde PiP');
+
+                  // Mostrar mensaje de navegación
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content:
+                            Text('🎬 Navegando a fullscreen automáticamente'),
+                        backgroundColor: Colors.blue,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+
+                    // Navegar a pantalla fullscreen (como Disney+, Netflix, etc.)
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => _FullscreenVideoPage(
+                          controller: _controller,
+                        ),
+                      ),
+                    );
+                  }
+                },
               ),
             ),
 
@@ -166,7 +206,9 @@ class _NativePlayerExampleState extends State<NativePlayerExample> {
                         Text('✅ Comportamiento igual a apps nativas'),
                         Text('✅ PiP limpio y sin efectos secundarios'),
                         Text('✅ Múltiples videos independientes'),
-                        Text('✅ Restauración automática al salir de PiP'),
+                        Text('✅ Restauración automática a fullscreen'),
+                        Text('✅ Navegación inteligente como Disney+/Netflix'),
+                        Text('✅ Auto-fullscreen al volver de multitasking'),
                       ],
                     ),
                   ),
@@ -206,5 +248,161 @@ class _NativePlayerExampleState extends State<NativePlayerExample> {
   void dispose() {
     _controller?.dispose();
     super.dispose();
+  }
+}
+
+/// Pantalla de video en fullscreen (como Disney+, Netflix, etc.)
+class _FullscreenVideoPage extends StatefulWidget {
+  final NativeVideoPlayerController? controller;
+
+  const _FullscreenVideoPage({this.controller});
+
+  @override
+  State<_FullscreenVideoPage> createState() => _FullscreenVideoPageState();
+}
+
+class _FullscreenVideoPageState extends State<_FullscreenVideoPage> {
+  bool _controlsVisible = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        onTap: () {
+          setState(() {
+            _controlsVisible = !_controlsVisible;
+          });
+        },
+        child: Stack(
+          children: [
+            // Video Player Fullscreen
+            Center(
+              child: NativeVideoPlayer(
+                url:
+                    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+                autoplay: true,
+                onViewCreated: (controller) {
+                  // Video continúa reproduciéndose automáticamente
+                  debugPrint(
+                      '[Fullscreen] Video restaurado en pantalla completa');
+                },
+              ),
+            ),
+
+            // Controles overlay
+            if (_controlsVisible)
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.7),
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.7),
+                    ],
+                  ),
+                ),
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      // Header
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back,
+                                color: Colors.white),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                          const Expanded(
+                            child: Text(
+                              'Big Buck Bunny',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.more_vert,
+                                color: Colors.white),
+                            onPressed: () {},
+                          ),
+                        ],
+                      ),
+
+                      const Spacer(),
+
+                      // Controles de reproducción
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.replay_10,
+                                color: Colors.white, size: 40),
+                            onPressed: () {},
+                          ),
+                          const SizedBox(width: 20),
+                          IconButton(
+                            icon: const Icon(Icons.pause,
+                                color: Colors.white, size: 50),
+                            onPressed: () {
+                              widget.controller?.pause();
+                            },
+                          ),
+                          const SizedBox(width: 20),
+                          IconButton(
+                            icon: const Icon(Icons.forward_10,
+                                color: Colors.white, size: 40),
+                            onPressed: () {},
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Barra de progreso
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          children: [
+                            LinearProgressIndicator(
+                              value: 0.3,
+                              backgroundColor: Colors.white.withOpacity(0.3),
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Color(0xFF6366F1)),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  '1:23',
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 12),
+                                ),
+                                const Text(
+                                  '4:56',
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

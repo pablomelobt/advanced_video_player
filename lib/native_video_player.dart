@@ -17,18 +17,28 @@ import 'package:flutter/widgets.dart';
 ///     controller.play();
 ///     controller.startPiP();
 ///   },
+///   onPipRestoreToFullscreen: () {
+///     // Navegar a fullscreen cuando el usuario vuelve desde PiP
+///     Navigator.push(context, MaterialPageRoute(...));
+///   },
 /// )
 /// ```
 class NativeVideoPlayer extends StatefulWidget {
   final String url;
   final bool autoplay;
   final void Function(NativeVideoPlayerController)? onViewCreated;
+  final VoidCallback? onPipStarted;
+  final VoidCallback? onPipStopped;
+  final VoidCallback? onPipRestoreToFullscreen;
 
   const NativeVideoPlayer({
     super.key,
     required this.url,
     this.autoplay = true,
     this.onViewCreated,
+    this.onPipStarted,
+    this.onPipStopped,
+    this.onPipRestoreToFullscreen,
   });
 
   @override
@@ -37,6 +47,34 @@ class NativeVideoPlayer extends StatefulWidget {
 
 class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
   NativeVideoPlayerController? _controller;
+  EventChannel? _eventChannel;
+
+  void _setupEventListener(int viewId) {
+    _eventChannel =
+        EventChannel('advanced_video_player/native_view_events_$viewId');
+    _eventChannel!.receiveBroadcastStream().listen((dynamic event) {
+      if (event is Map) {
+        final eventType = event['event'] as String?;
+        debugPrint('[NativeVideoPlayer] Evento recibido: $eventType');
+
+        switch (eventType) {
+          case 'pip_started':
+            widget.onPipStarted?.call();
+            break;
+          case 'pip_stopped':
+            widget.onPipStopped?.call();
+            break;
+          case 'pip_restore_to_fullscreen':
+            debugPrint(
+                '[NativeVideoPlayer] 🎬 Usuario volvió desde PiP → navegando a fullscreen');
+            widget.onPipRestoreToFullscreen?.call();
+            break;
+        }
+      }
+    }, onError: (dynamic error) {
+      debugPrint('[NativeVideoPlayer] Error en stream de eventos: $error');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +88,7 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
         creationParamsCodec: const StandardMessageCodec(),
         onPlatformViewCreated: (int viewId) {
           _controller = NativeVideoPlayerController._(viewId);
+          _setupEventListener(viewId);
           widget.onViewCreated?.call(_controller!);
         },
       );

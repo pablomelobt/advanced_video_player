@@ -59,6 +59,10 @@ class AdvancedVideoPlayer extends StatefulWidget {
   /// Si es true, abre automáticamente en pantalla completa al iniciar
   final bool autoEnterFullscreen;
 
+  /// URL de la imagen de preview/thumbnail (opcional)
+  /// Si se proporciona, se mostrará mientras el video carga
+  final String? previewImageUrl;
+
   const AdvancedVideoPlayer({
     super.key,
     required this.videoSource,
@@ -75,6 +79,7 @@ class AdvancedVideoPlayer extends StatefulWidget {
     this.secondaryColor = const Color(0xFF8B5CF6),
     this.useNativePlayerOnIOS = false,
     this.autoEnterFullscreen = false,
+    this.previewImageUrl,
   });
 
   @override
@@ -118,6 +123,10 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   @override
   void initState() {
     super.initState();
+    // Inicializar servicio PiP con callback
+    PictureInPictureService.initialize();
+    PictureInPictureService.setOnPipControlListener(_handlePipControlEvent);
+
     _initializeVideoPlayer();
     _setupAnimations();
     _checkPictureInPictureSupport();
@@ -151,12 +160,111 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   void _setupPictureInPictureListener() {
-    PictureInPictureService.pictureInPictureModeStream.listen((isInPip) {
+    // Escuchar cambios de estado de PiP y eventos de control
+    PictureInPictureService.pictureInPictureEventStream.listen((event) {
       if (!mounted) return;
-      setState(() {
-        _isInPictureInPictureMode = isInPip;
-      });
+
+      // Si es un boolean simple, es un cambio de estado de PiP
+      if (event is bool) {
+        setState(() {
+          _isInPictureInPictureMode = event;
+        });
+        return;
+      }
+
+      // Si es un Map, puede ser un evento de control (desde Android)
+      if (event is Map) {
+        final type = event['type'] as String?;
+        final action = event['action'] as String?;
+
+        if (type == 'control' && action != null) {
+          _handlePipControlEvent(action);
+        }
+      }
     });
+  }
+
+  void _handlePipControlEvent(String action) {
+    if (!mounted) return;
+
+    debugPrint('[AdvancedVideoPlayer] Control PiP recibido: $action');
+
+    // Si es reproductor nativo
+    if (widget.useNativePlayerOnIOS && _nativeController != null) {
+      switch (action) {
+        case 'play':
+          _nativeController!.play();
+          setState(() => _isPlaying = true);
+          _updatePipPlaybackState(true);
+          break;
+        case 'pause':
+          _nativeController!.pause();
+          setState(() => _isPlaying = false);
+          _updatePipPlaybackState(false);
+          break;
+        case 'play_pause':
+          // Toggle play/pause para controles nativos de Android
+          if (_isPlaying) {
+            _nativeController!.pause();
+            setState(() => _isPlaying = false);
+            _updatePipPlaybackState(false);
+          } else {
+            _nativeController!.play();
+            setState(() => _isPlaying = true);
+            _updatePipPlaybackState(true);
+          }
+          break;
+        case 'replay10':
+          // Para reproductor nativo, puedes implementar seek si está disponible
+          break;
+        case 'forward10':
+          // Para reproductor nativo, puedes implementar seek si está disponible
+          break;
+      }
+      return;
+    }
+
+    // Si es reproductor de video_player
+    if (_controller != null && _controller!.value.isInitialized) {
+      switch (action) {
+        case 'play':
+          _controller!.play();
+          setState(() => _isPlaying = true);
+          _updatePipPlaybackState(true);
+          break;
+        case 'pause':
+          _controller!.pause();
+          setState(() => _isPlaying = false);
+          _updatePipPlaybackState(false);
+          break;
+        case 'play_pause':
+          // Toggle play/pause para controles nativos de Android
+          if (_isPlaying) {
+            _controller!.pause();
+            setState(() => _isPlaying = false);
+            _updatePipPlaybackState(false);
+          } else {
+            _controller!.play();
+            setState(() => _isPlaying = true);
+            _updatePipPlaybackState(true);
+          }
+          break;
+        case 'replay10':
+          final currentPosition = _controller!.value.position;
+          final newPosition =
+              currentPosition - Duration(seconds: widget.skipDuration);
+          _controller!.seekTo(
+              newPosition < Duration.zero ? Duration.zero : newPosition);
+          break;
+        case 'forward10':
+          final currentPosition = _controller!.value.position;
+          final duration = _controller!.value.duration;
+          final newPosition =
+              currentPosition + Duration(seconds: widget.skipDuration);
+          _controller!.seekTo(newPosition > duration ? duration : newPosition);
+          break;
+      }
+    }
   }
 
   void _initializeScreenSharing() async {
@@ -306,11 +414,14 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       // Configurar el reproductor nativo para PiP
       await _setupNativePlayer();
 
+      // IMPORTANTE: Pausar el video en la vista preview (no reproducir automáticamente)
+      await _controller!.pause();
+
       _controller!.addListener(_videoListener);
 
       setState(() {
         _isLoading = false;
-        _isPlaying = _controller!.value.isPlaying;
+        _isPlaying = false; // Siempre pausado en vista preview
       });
 
       _showControlsTemporarily();
@@ -360,11 +471,23 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       setState(() {
         _isPlaying = false;
       });
+      _updatePipPlaybackState(false);
       widget.onVideoEnd?.call();
     } else {
-      setState(() {
-        _isPlaying = _controller!.value.isPlaying;
-      });
+      final newPlayingState = _controller!.value.isPlaying;
+      if (_isPlaying != newPlayingState) {
+        setState(() {
+          _isPlaying = newPlayingState;
+        });
+        _updatePipPlaybackState(newPlayingState);
+      }
+    }
+  }
+
+  void _updatePipPlaybackState(bool isPlaying) {
+    // Solo actualizar en Android cuando está en modo PiP
+    if (Platform.isAndroid && _isInPictureInPictureMode) {
+      PictureInPictureService.updatePlaybackState(isPlaying: isPlaying);
     }
   }
 
@@ -379,9 +502,11 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         if (_isPlaying) {
           _nativeController!.pause();
           _isPlaying = false;
+          _updatePipPlaybackState(false);
         } else {
           _nativeController!.play();
           _isPlaying = true;
+          _updatePipPlaybackState(true);
         }
       });
       _showControlsTemporarily();
@@ -394,21 +519,24 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       return;
     }
 
-    // Si estamos en vista preview (no en pantalla completa) y el video no está reproduciéndose
-    if (!_isFullscreen && !_isPlaying) {
+    // IMPORTANTE: En vista preview SIEMPRE ir a pantalla completa
+    // No permitir reproducción en la vista principal, solo en fullscreen y PiP
+    if (!_isFullscreen) {
       // Entrar en pantalla completa y reproducir automáticamente
       _enterFullscreenAndPlay();
       return;
     }
 
-    // Comportamiento normal para pausar o cuando ya estamos en pantalla completa
+    // Comportamiento normal solo cuando estamos en pantalla completa
     setState(() {
       if (_isPlaying) {
         _controller!.pause();
         _isPlaying = false;
+        _updatePipPlaybackState(false);
       } else {
         _controller!.play();
         _isPlaying = true;
+        _updatePipPlaybackState(true);
       }
     });
     _showControlsTemporarily();
@@ -469,6 +597,14 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
           fullscreenDialog: true,
         ),
       );
+
+      // Al regresar de fullscreen, pausar el video automáticamente
+      if (_controller != null && _controller!.value.isInitialized) {
+        _controller!.pause();
+        setState(() {
+          _isPlaying = false;
+        });
+      }
     }
     _showControlsTemporarily();
   }
@@ -497,6 +633,14 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         fullscreenDialog: true,
       ),
     );
+
+    // Al regresar de fullscreen, pausar el video automáticamente
+    if (_controller != null && _controller!.value.isInitialized) {
+      _controller!.pause();
+      setState(() {
+        _isPlaying = false;
+      });
+    }
   }
 
   void _enterPictureInPicture() async {
@@ -555,11 +699,14 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       final success = await PictureInPictureService.enterPictureInPictureMode(
         width: width,
         height: height,
+        isPlaying:
+            _isPlaying, // Pasar estado de reproducción para controles nativos
       );
 
       if (!mounted) return;
       if (success) {
-        debugPrint('Picture-in-Picture activado');
+        debugPrint(
+            'Picture-in-Picture activado con controles nativos (Android)');
       } else {
         debugPrint('No se pudo activar Picture-in-Picture');
       }
@@ -691,16 +838,89 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Video - Nativo o estándar
+        // Fondo: Preview/thumbnail o gradiente
+        if (widget.previewImageUrl != null &&
+            widget.previewImageUrl!.isNotEmpty)
+          Image.network(
+            widget.previewImageUrl!,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [widget.primaryColor, widget.secondaryColor],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+              );
+            },
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [widget.primaryColor, widget.secondaryColor],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+          ),
+
+        // Video - Solo para reproductor nativo (placeholder)
         if (_useNativePlayer)
           // Para reproductor nativo: mostrar placeholder y botón para abrir fullscreen
-          _buildNativePlaceholder()
-        else if (_isLoading ||
-            _controller == null ||
-            !_controller!.value.isInitialized)
-          _buildLoadingWidget()
-        else
-          VideoPlayer(_controller!),
+          _buildNativePlaceholder(),
+
+        // Indicador de carga cuando está inicializando (solo si no hay preview)
+        if (!_useNativePlayer &&
+            _controller != null &&
+            !_controller!.value.isInitialized &&
+            (widget.previewImageUrl == null || widget.previewImageUrl!.isEmpty))
+          Container(
+            color: Colors.black.withOpacity(0.6),
+            child: const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    strokeWidth: 3,
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'Cargando video...',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // Overlay sutil sobre el preview (estilo Disney+)
+        if (!_isLoading &&
+            !_useNativePlayer &&
+            _controller != null &&
+            _controller!.value.isInitialized)
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(0.2),
+                  Colors.transparent,
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.3),
+                ],
+                stops: const [0.0, 0.3, 0.7, 1.0],
+              ),
+            ),
+          ),
 
         // Controles overlay
         if (!_isLoading &&
@@ -784,7 +1004,13 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             !_controller!.value.isInitialized)
           _buildLoadingWidget()
         else
-          VideoPlayer(_controller!),
+          // Video con aspect ratio correcto
+          Center(
+            child: AspectRatio(
+              aspectRatio: _controller!.value.aspectRatio,
+              child: VideoPlayer(_controller!),
+            ),
+          ),
 
         // Controles overlay para pantalla completa
         if (!_isLoading &&
@@ -805,34 +1031,78 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   }
 
   Widget _buildLoadingWidget() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [widget.primaryColor, widget.secondaryColor],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              strokeWidth: 3,
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Cargando video...',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Imagen de preview si está disponible, sino gradiente
+        if (widget.previewImageUrl != null &&
+            widget.previewImageUrl!.isNotEmpty)
+          Image.network(
+            widget.previewImageUrl!,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              // Si falla la carga de la imagen, mostrar gradiente
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [widget.primaryColor, widget.secondaryColor],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+              );
+            },
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [widget.primaryColor, widget.secondaryColor],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
             ),
-          ],
+          ),
+
+        // Overlay oscuro para que el indicador sea visible
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withOpacity(0.5),
+                Colors.transparent,
+                Colors.transparent,
+                Colors.black.withOpacity(0.5),
+              ],
+              stops: const [0.0, 0.3, 0.7, 1.0],
+            ),
+          ),
         ),
-      ),
+
+        // Indicador de carga
+        const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                strokeWidth: 3,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Cargando video...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -1064,10 +1334,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         _buildControlButton(
-          icon:
-              _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+          icon: Icons.play_circle_filled,
           onPressed: _togglePlayPause,
-          tooltip: _isPlaying ? 'Pausar' : 'Reproducir en pantalla completa',
+          tooltip: 'Reproducir en pantalla completa',
           size: 60,
           isPrimary: true,
           isPictureInPicture: _isInPictureInPictureMode,
@@ -2099,7 +2368,8 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                                 ),
                               if (Platform.isIOS) const SizedBox(width: 8),
                               // Botón PiP
-                              if (widget.enablePictureInPicture)
+                              if (!Platform.isIOS &&
+                                  widget.enablePictureInPicture)
                                 _buildActionButton(
                                   icon: Icons.picture_in_picture_alt,
                                   label: '',

@@ -314,6 +314,111 @@ AdvancedVideoPlayer(
 - **iOS**: iOS 11.0+
 - Dispositivos Apple compatibles (Apple TV, AirPlay speakers, etc.)
 
+---
+
+## 🎬 NativeVideoPlayer (iOS 15+)
+
+### Reproductor Nativo con Arquitectura Avanzada
+
+El `NativeVideoPlayer` es un nuevo widget que utiliza la arquitectura nativa de iOS sin dummy views, replicando el comportamiento de apps como **Disney+, Netflix, YouTube y Apple TV**.
+
+#### ✨ Características Únicas
+
+- ✅ **Sin dummy views** fuera de pantalla
+- ✅ **Comportamiento 100% nativo** de iOS
+- ✅ **PiP limpio** y sin efectos secundarios
+- ✅ **Restauración automática a fullscreen** como Disney+/Netflix
+- ✅ **Navegación inteligente** cuando el usuario vuelve desde PiP
+- ✅ **Múltiples instancias** de video independientes
+
+#### 📖 Uso Básico
+
+```dart
+import 'package:advanced_video_player/native_video_player.dart';
+
+NativeVideoPlayer(
+  url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+  autoplay: true,
+  onViewCreated: (controller) {
+    // Controlar el player
+    controller.play();
+    controller.pause();
+    controller.seek(10.0);
+    controller.startPiP();
+  },
+)
+```
+
+#### 🎯 Restauración Automática a Fullscreen
+
+**La funcionalidad estrella**: Cuando el usuario toca la ventana PiP para volver a la app, automáticamente se navega a una pantalla fullscreen del video.
+
+```dart
+NativeVideoPlayer(
+  url: 'https://example.com/video.mp4',
+  autoplay: true,
+  
+  // Evento cuando se activa PiP
+  onPipStarted: () {
+    print('✅ PiP activado');
+  },
+  
+  // Evento cuando se detiene PiP
+  onPipStopped: () {
+    print('⏹️ PiP detenido');
+  },
+  
+  // ⭐ Evento cuando el usuario vuelve desde PiP
+  onPipRestoreToFullscreen: () {
+    print('🎬 Usuario volvió desde PiP → Navegando a fullscreen');
+    
+    // Navegar a pantalla fullscreen (como Disney+, Netflix, etc.)
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullscreenVideoPage(),
+      ),
+    );
+  },
+)
+```
+
+#### 🎮 Métodos del Controller
+
+```dart
+final controller = NativeVideoPlayerController._(...);
+
+// Control de reproducción
+await controller.play();           // Reproducir
+await controller.pause();          // Pausar
+await controller.seek(30.0);       // Saltar a 30 segundos
+await controller.setVolume(0.5);   // Volumen al 50%
+
+// Control de PiP
+await controller.startPiP();       // Activar PiP
+await controller.stopPiP();        // Detener PiP
+
+// Cambiar video
+await controller.setUrl(
+  'https://example.com/new_video.mp4',
+  autoplay: true,
+);
+```
+
+#### 🎯 Ejemplo Completo
+
+Ver el ejemplo completo en [`example/lib/native_player_example.dart`](example/lib/native_player_example.dart)
+
+#### 📚 Documentación Adicional
+
+Para entender cómo funciona internamente la restauración automática a fullscreen:
+- **[Restauración Automática a Fullscreen](doc/pip-fullscreen-restoration.md)**
+
+#### ⚠️ Requisitos
+
+- **iOS**: 15.0+ (para arquitectura nativa sin dummy views)
+- **PiP Support**: El dispositivo debe soportar Picture-in-Picture
+- **Permisos**: Configuración correcta de `Info.plist` (ver [Guía iOS](doc/ios-setup.md))
+
 
 
 ## 🧪 Ejecutar el Ejemplo

@@ -394,12 +394,75 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
     private var pipController: AVPictureInPictureController?
     private let viewId: Int64
     private let messenger: FlutterBinaryMessenger
+    private var eventChannel: FlutterEventChannel?
+    private var eventSink: FlutterEventSink?
+    private var wasInBackground = false
+    private var pipWasActiveBeforeBackground = false
+    var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+
     
     init(frame: CGRect, viewId: Int64, messenger: FlutterBinaryMessenger) {
         self.viewId = viewId
         self.messenger = messenger
         super.init(frame: frame)
         backgroundColor = .black
+        
+        // Configurar el event channel para esta vista específica
+        eventChannel = FlutterEventChannel(name: "advanced_video_player/native_view_events_\(viewId)", binaryMessenger: messenger)
+        eventChannel?.setStreamHandler(PlayerViewEventHandler { [weak self] sink in
+            self?.eventSink = sink
+        })
+        
+        // Detectar cuando la app vuelve del background (como Disney+)
+        setupAppStateNotifications()
+    }
+    
+    private func setupAppStateNotifications() {
+        // Detectar cuando la app va al background
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+        
+        // Detectar cuando la app vuelve del background
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+    
+    @objc private func appDidEnterBackground() {
+        wasInBackground = true
+        pipWasActiveBeforeBackground = pipController?.isPictureInPictureActive ?? false
+        print("[PlayerView] 📱 App fue al background - PiP estaba activo: \(pipWasActiveBeforeBackground)")
+    }
+    
+    @objc private func appDidBecomeActive() {
+        // Solo navegar a fullscreen si:
+        // 1. La app estaba en background
+        // 2. PiP estaba activo antes de ir al background
+        // 3. PiP sigue activo ahora
+        if wasInBackground && pipWasActiveBeforeBackground {
+            if let pipController = pipController, pipController.isPictureInPictureActive {
+                print("[PlayerView] 🏠 App volvió del background con PiP activo → navegando a fullscreen")
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.sendEvent([
+                        "event": "pip_restore_to_fullscreen",
+                        "action": "navigate_to_fullscreen",
+                        "reason": "app_resumed_from_background"
+                    ])
+                }
+            }
+        }
+        
+        // Reset flags
+        wasInBackground = false
+        pipWasActiveBeforeBackground = false
     }
     
     required init?(coder: NSCoder) {
@@ -453,6 +516,29 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
         }
         
         pipController.startPictureInPicture()
+        sendAppToBackground()
+    }
+
+    func sendAppToBackground() {
+        print("[PlayerView] 🕐 Enviando app al background de forma segura...")
+
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "SendToBackground") {
+            // Bloque de expiración: iOS finaliza la tarea si dura demasiado
+            UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
+            self.backgroundTaskID = .invalid
+        }
+
+        // Simula trabajo en segundo plano antes de suspender (opcional)
+        DispatchQueue.global().async {
+            // 🔧 Aquí podrías guardar estado, pausar video, etc.
+            sleep(1)
+
+            // Marca la tarea como completada → iOS suspenderá la app
+            UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
+            self.backgroundTaskID = .invalid
+
+            print("[PlayerView] 🏠 App pasó a background (controlado por sistema)")
+        }
     }
     
     func stopPiP() {
@@ -513,9 +599,15 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
     }
     
     func pictureInPictureController(_ controller: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
-        print("[PlayerView] 🔄 Restaurando interfaz de usuario")
-        // Aquí puedes navegar de vuelta a la pantalla del video si es necesario
-        sendEvent(["event": "pip_restore_ui"])
+        print("[PlayerView] 🔄 Usuario volvió desde PiP → navegando a fullscreen")
+        
+        // Enviar evento a Flutter para que navegue a fullscreen
+        sendEvent([
+            "event": "pip_restore_to_fullscreen",
+            "action": "navigate_to_fullscreen"
+        ])
+        
+        // Confirmar que se restauró la UI
         completionHandler(true)
     }
     
@@ -523,19 +615,49 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
         var eventData = data
         eventData["viewId"] = viewId
         
-        let channel = FlutterEventChannel(name: "advanced_video_player/native_view_events_\(viewId)", binaryMessenger: messenger)
-        // Enviar evento (necesitarías configurar un stream handler por vista)
-        PiPEvents.shared.send(eventData)
+        // Enviar evento a través del eventSink de esta vista específica
+        eventSink?(eventData)
     }
     
     deinit {
         print("[PlayerView] 🗑️ Limpiando player view")
+        
+        // Limpiar notificaciones
+        NotificationCenter.default.removeObserver(self)
+        
+        // Limpiar player
         player?.pause()
         player = nil
         playerLayer?.removeFromSuperlayer()
         playerLayer = nil
         pipController?.delegate = nil
         pipController = nil
+        eventChannel?.setStreamHandler(nil)
+        eventSink = nil
+    }
+}
+
+// MARK: - Player View Event Handler
+@available(iOS 15.0, *)
+class PlayerViewEventHandler: NSObject, FlutterStreamHandler {
+    private var eventSink: FlutterEventSink?
+    private let onSinkReady: (FlutterEventSink?) -> Void
+    
+    init(onSinkReady: @escaping (FlutterEventSink?) -> Void) {
+        self.onSinkReady = onSinkReady
+        super.init()
+    }
+    
+    func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+        eventSink = events
+        onSinkReady(events)
+        return nil
+    }
+    
+    func onCancel(withArguments arguments: Any?) -> FlutterError? {
+        eventSink = nil
+        onSinkReady(nil)
+        return nil
     }
 }
 

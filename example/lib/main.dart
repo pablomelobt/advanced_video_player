@@ -54,8 +54,10 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
   ///
   /// Se utiliza el video Big Buck Bunny de Google Cloud Storage,
   /// un video de dominio público ideal para pruebas.
+  // final String _videoUrl =
+  //     'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
   final String _videoUrl =
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+      'https://player.vimeo.com/external/510520873.m3u8?s=2651efc084fb2c4ad19925e2b48044cdecdbebaf&oauth2_token_id=1795373245';
 
   @override
   void initState() {
@@ -134,6 +136,11 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
               child: AdvancedVideoPlayer(
                 // URL del video a reproducir
                 videoSource: _videoUrl,
+
+                // 🆕 OPCIONAL: Imagen de preview/thumbnail
+                // Descomenta la siguiente línea para usar un thumbnail personalizado
+                previewImageUrl:
+                    'https://i.vimeocdn.com/video/1056828543-d9012e5ba116e7e91acebb15be11a7845a638852472b3791d05e214638a0091e-d?region=us',
 
                 // Callback cuando el video termina de reproducirse
                 onVideoEnd: () {
@@ -267,6 +274,17 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
               description:
                   'Reproduce videos en Apple TV y otros dispositivos compatibles con AirPlay',
               color: const Color(0xFF8B5CF6),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Imagen de preview opcional
+            _buildFeatureCard(
+              icon: Icons.image,
+              title: 'Preview/Thumbnail Opcional',
+              description:
+                  'Puedes mostrar una imagen de preview personalizada mientras el video carga (opcional)',
+              color: const Color(0xFFEC4899),
             ),
 
             const SizedBox(height: 40),
