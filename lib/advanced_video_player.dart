@@ -152,7 +152,10 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     if (Platform.isAndroid) {
       try {
         await PictureInPictureService.getPictureInPictureInfo();
-      } catch (e) {}
+      } catch (e) {
+        debugPrint(
+            '[AdvancedVideoPlayer] Error al obtener información de PiP: $e');
+      }
     }
 
     if (!mounted) return;
@@ -306,7 +309,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
     try {
       await AdvancedVideoPlayerCast.initializeCast();
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('[AdvancedVideoPlayer] Error al inicializar Google Cast: $e');
+    }
   }
 
   void _initializeAirPlay() async {
@@ -453,7 +458,10 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       await platform.invokeMethod('setUrl', {
         'url': widget.videoSource,
       });
-    } catch (e) {}
+    } catch (e) {
+      debugPrint(
+          '[AdvancedVideoPlayer] Error al configurar el reproductor nativo: $e');
+    }
   }
 
   void _videoListener() {
@@ -573,8 +581,11 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             await _nativeController!.getCurrentPosition();
       }
 
+      if (!mounted) return;
+
       // Navegar a fullscreen y esperar el resultado (posición al cerrar)
-      final result = await Navigator.of(context).push<double>(
+      final navigator = Navigator.of(context);
+      final result = await navigator.push<double>(
         MaterialPageRoute(
           builder: (context) => _NativeFullscreenPage(
             url: widget.videoSource,
@@ -598,7 +609,8 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
     if (!_isFullscreen) {
       // Navegar a pantalla completa
-      await Navigator.of(context).push(
+      final navigator = Navigator.of(context);
+      await navigator.push(
         MaterialPageRoute(
           builder: (context) => FullscreenVideoPage(
             controller: _controller!,
@@ -633,8 +645,11 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     });
     _controller!.play();
 
+    if (!mounted) return;
+
     // Luego entrar en pantalla completa
-    await Navigator.of(context).push(
+    final navigator = Navigator.of(context);
+    await navigator.push(
       MaterialPageRoute(
         builder: (context) => FullscreenVideoPage(
           controller: _controller!,
@@ -2560,13 +2575,14 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                                   color: Colors.white, size: 28),
                               onPressed: () async {
                                 // Obtener posición actual y devolverla al cerrar
+                                final navigator = Navigator.of(context);
                                 double currentPos = _currentPosition;
                                 if (_controller != null) {
                                   currentPos =
                                       await _controller!.getCurrentPosition();
                                 }
                                 if (mounted) {
-                                  Navigator.pop(context, currentPos);
+                                  navigator.pop(currentPos);
                                 }
                               },
                             ),

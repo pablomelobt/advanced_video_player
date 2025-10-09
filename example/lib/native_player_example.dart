@@ -376,15 +376,15 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage> {
                                   Color(0xFF6366F1)),
                             ),
                             const SizedBox(height: 8),
-                            Row(
+                            const Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text(
+                                Text(
                                   '1:23',
                                   style: TextStyle(
                                       color: Colors.white, fontSize: 12),
                                 ),
-                                const Text(
+                                Text(
                                   '4:56',
                                   style: TextStyle(
                                       color: Colors.white, fontSize: 12),

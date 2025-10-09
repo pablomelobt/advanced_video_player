@@ -131,7 +131,10 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
           _isInPictureInPictureMode = isInPip;
         });
       }
-    } catch (e) {}
+    } catch (e) {
+      debugPrint(
+          '[FullscreenVideoPage] Error al verificar el estado de PiP: $e');
+    }
   }
 
   void _initializeScreenSharing() async {
@@ -154,7 +157,10 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
         if (!mounted) return;
         _setupScreenSharingListeners();
       } else {}
-    } catch (e) {}
+    } catch (e) {
+      debugPrint(
+          '[FullscreenVideoPage] Error al inicializar Screen Sharing: $e');
+    }
   }
 
   void _initializeAirPlay() async {
