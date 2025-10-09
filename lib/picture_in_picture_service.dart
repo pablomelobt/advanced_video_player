@@ -26,6 +26,33 @@ class PictureInPictureService {
   static const EventChannel _eventChannel =
       EventChannel('picture_in_picture_service_events');
 
+  static void Function(String action)? _onPipControlCallback;
+
+  /// Inicializa el listener para los controles de PiP
+  static void initialize() {
+    _channel.setMethodCallHandler(_handleMethodCall);
+  }
+
+  /// Maneja las llamadas desde el código nativo
+  static Future<dynamic> _handleMethodCall(MethodCall call) async {
+    switch (call.method) {
+      case 'onPipControl':
+        if (call.arguments is Map) {
+          final args = Map<String, dynamic>.from(call.arguments);
+          final action = args['action'] as String?;
+          if (action != null && _onPipControlCallback != null) {
+            _onPipControlCallback!(action);
+          }
+        }
+        break;
+    }
+  }
+
+  /// Establece el callback para los controles de PiP
+  static void setOnPipControlListener(void Function(String action)? callback) {
+    _onPipControlCallback = callback;
+  }
+
   /// Verifica si el dispositivo soporta Picture-in-Picture
   ///
   /// Retorna `true` si el dispositivo y la versión del sistema operativo
@@ -47,17 +74,20 @@ class PictureInPictureService {
   ///
   /// [width] y [height] especifican las dimensiones de la ventana PiP.
   /// Se recomienda usar una proporción de aspecto 16:9 para videos.
+  /// [isPlaying] indica si el video está reproduciéndose (para Android, controles nativos).
   ///
   /// Retorna `true` si se activó exitosamente, `false` en caso contrario.
   static Future<bool> enterPictureInPictureMode({
     required double width,
     required double height,
+    bool isPlaying = true,
   }) async {
     try {
       final bool success =
           await _channel.invokeMethod('enterPictureInPictureMode', {
         'width': width,
         'height': height,
+        'isPlaying': isPlaying,
       });
 
       return success;
@@ -71,6 +101,21 @@ class PictureInPictureService {
     try {
       final bool success =
           await _channel.invokeMethod('exitPictureInPictureMode');
+      return success;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Actualiza el estado de reproducción en PiP (para Android)
+  ///
+  /// Esto actualiza los controles nativos de PiP para mostrar el botón
+  /// correcto (play o pause) según el estado actual.
+  static Future<bool> updatePlaybackState({required bool isPlaying}) async {
+    try {
+      final bool success = await _channel.invokeMethod('updatePlaybackState', {
+        'isPlaying': isPlaying,
+      });
       return success;
     } catch (e) {
       return false;

@@ -32,6 +32,9 @@ Esta versión se enfoca en optimizar la calidad del código, documentación y de
 - ✅ **NativeVideoPlayerController**: Controlador mejorado para iOS
 - ✅ **Mejor manejo de PiP**: Implementación más robusta
 - ✅ **Screen Sharing mejorado**: Mejor compatibilidad con SharePlay y Google Cast
+- ✅ **Restauración Automática a Fullscreen**: Cuando el usuario vuelve desde PiP, navega automáticamente a fullscreen (como Disney+, Netflix, YouTube)
+- ✅ **Event Callbacks PiP**: Nuevos callbacks `onPipStarted`, `onPipStopped`, `onPipRestoreToFullscreen`
+- ✅ **EventChannel por Vista**: Sistema de eventos mejorado con canales dedicados por cada instancia de PlayerView
 
 #### 🐛 Correcciones de Bugs
 - ✅ **Timer leaks** en pruebas corregidos
@@ -50,13 +53,15 @@ Esta versión se enfoca en optimizar la calidad del código, documentación y de
 
 #### Archivos Modificados
 - `lib/advanced_video_player.dart` - Optimizaciones de código
-- `lib/native_video_player.dart` - Mejoras en documentación
+- `lib/native_video_player.dart` - Sistema de eventos PiP añadido, callbacks `onPipStarted`, `onPipStopped`, `onPipRestoreToFullscreen`
 - `lib/picture_in_picture_service.dart` - Documentación completa
 - `lib/screen_sharing_service.dart` - Documentación y mejoras
+- `ios/Classes/AdvancedVideoPlayerPlugin.swift` - Restauración automática a fullscreen, EventChannel por vista, PlayerViewEventHandler
 - `test/advanced_video_player_test.dart` - Pruebas optimizadas
-- `example/lib/native_player_example.dart` - Ejemplo mejorado
+- `example/lib/native_player_example.dart` - Ejemplo con navegación a fullscreen desde PiP
+- `doc/pip-fullscreen-restoration.md` - Nueva documentación sobre restauración automática
 - `pubspec.yaml` - Dependencias actualizadas
-- `README.md` - Documentación completa
+- `README.md` - Documentación completa con sección NativeVideoPlayer
 
 #### Mejoras de Performance
 - ✅ **Inicialización más rápida** del reproductor

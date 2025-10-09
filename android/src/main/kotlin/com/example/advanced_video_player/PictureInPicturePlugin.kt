@@ -1,14 +1,21 @@
 package com.example.advanced_video_player
 
 import android.app.Activity
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.util.Log
 import android.util.Rational
 import androidx.annotation.NonNull
+import androidx.annotation.RequiresApi
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -23,6 +30,14 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
     private lateinit var eventChannel: EventChannel
     private var activity: Activity? = null
     private var eventSink: EventChannel.EventSink? = null
+    private var isPlaying: Boolean = true
+    private var pipControlsReceiver: BroadcastReceiver? = null
+    
+    companion object {
+        private const val ACTION_MEDIA_CONTROL = "media_control"
+        private const val EXTRA_CONTROL_TYPE = "control_type"
+        private const val REQUEST_PLAY_PAUSE = 1
+    }
 
     override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "picture_in_picture_service")
@@ -40,6 +55,8 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
             "enterPictureInPictureMode" -> {
                 val width = call.argument<Double>("width") ?: 300.0
                 val height = call.argument<Double>("height") ?: 200.0
+                val playing = call.argument<Boolean>("isPlaying") ?: true
+                isPlaying = playing
                 result.success(enterPictureInPictureMode(width, height))
             }
             "exitPictureInPictureMode" -> {
@@ -50,6 +67,12 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
             }
             "getPictureInPictureInfo" -> {
                 result.success(getPictureInPictureInfo())
+            }
+            "updatePlaybackState" -> {
+                val playing = call.argument<Boolean>("isPlaying") ?: true
+                isPlaying = playing
+                updatePipParams()
+                result.success(true)
             }
             else -> {
                 result.notImplemented()
@@ -124,15 +147,15 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
+                // Registrar el BroadcastReceiver para los controles
+                registerPipControlsReceiver()
+                
                 // Calcular el aspect ratio correcto basado en las dimensiones del video
                 val aspectRatio = Rational(width.toInt(), height.toInt())
                 Log.d("PictureInPicturePlugin", "Aspect ratio: $aspectRatio (${width}x${height})")
                 
-                // Crear parámetros de PiP sin controles (sin acciones)
-                val pipParams = PictureInPictureParams.Builder()
-                    .setAspectRatio(aspectRatio)
-                    // No agregamos .setActions() para que no aparezcan controles
-                    .build()
+                // Crear parámetros de PiP con controles
+                val pipParams = buildPipParams(aspectRatio)
                 
                 // Configurar la Activity para PiP
                 currentActivity.setPictureInPictureParams(pipParams)
@@ -142,26 +165,147 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
                 
                 if (result) {
                     Log.d("PictureInPicturePlugin", "✅ Entrando en modo Picture-in-Picture exitosamente")
-                    Log.d("PictureInPicturePlugin", "📱 La ventana PiP mostrará solo el contenido del video")
-                    Log.d("PictureInPicturePlugin", "🎥 En modo PiP, solo el video será visible, no los controles")
+                    Log.d("PictureInPicturePlugin", "📱 La ventana PiP mostrará controles de play/pause")
                     // Notificar cambio de estado
                     eventSink?.success(true)
                     return true
                 } else {
                     Log.d("PictureInPicturePlugin", "❌ Error: No se pudo entrar en modo Picture-in-Picture")
+                    unregisterPipControlsReceiver()
                     return false
                 }
             } catch (e: Exception) {
                 Log.e("PictureInPicturePlugin", "❌ Error al entrar en PiP: ${e.message}")
+                unregisterPipControlsReceiver()
                 return false
             }
         }
         return false
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun buildPipParams(aspectRatio: Rational): PictureInPictureParams {
+        val actions = ArrayList<RemoteAction>()
+        actions.add(createPlayPauseAction())
+        
+        return PictureInPictureParams.Builder()
+            .setAspectRatio(aspectRatio)
+            .setActions(actions)
+            .build()
+    }
+    
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun createPlayPauseAction(): RemoteAction {
+        val currentActivity = activity ?: throw IllegalStateException("Activity is null")
+        
+        val intent = Intent(ACTION_MEDIA_CONTROL).apply {
+            putExtra(EXTRA_CONTROL_TYPE, "play_pause")
+            setPackage(currentActivity.packageName)
+        }
+        
+        val pendingIntent = PendingIntent.getBroadcast(
+            currentActivity,
+            REQUEST_PLAY_PAUSE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        // Usar íconos nativos de Android
+        val icon = if (isPlaying) {
+            Icon.createWithResource(currentActivity, android.R.drawable.ic_media_pause)
+        } else {
+            Icon.createWithResource(currentActivity, android.R.drawable.ic_media_play)
+        }
+        
+        val title = if (isPlaying) "Pausar" else "Reproducir"
+        
+        return RemoteAction(icon, title, title, pendingIntent)
+    }
+    
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun updatePipParams() {
+        val currentActivity = activity ?: return
+        
+        if (!currentActivity.isInPictureInPictureMode) {
+            return
+        }
+        
+        try {
+            // Obtener el aspect ratio actual
+            val activityInfo = currentActivity.packageManager.getActivityInfo(
+                currentActivity.componentName, 0
+            )
+            
+            // Reconstruir params con el nuevo estado
+            val actions = ArrayList<RemoteAction>()
+            actions.add(createPlayPauseAction())
+            
+            val pipParams = PictureInPictureParams.Builder()
+                .setActions(actions)
+                .build()
+            
+            currentActivity.setPictureInPictureParams(pipParams)
+            Log.d("PictureInPicturePlugin", "✅ PiP params actualizados - isPlaying: $isPlaying")
+        } catch (e: Exception) {
+            Log.e("PictureInPicturePlugin", "❌ Error actualizando PiP params: ${e.message}")
+        }
+    }
+    
+    private fun registerPipControlsReceiver() {
+        val currentActivity = activity ?: return
+        
+        if (pipControlsReceiver != null) {
+            // Ya está registrado
+            return
+        }
+        
+        pipControlsReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action != ACTION_MEDIA_CONTROL) return
+                
+                val controlType = intent.getStringExtra(EXTRA_CONTROL_TYPE)
+                Log.d("PictureInPicturePlugin", "📱 Control PiP recibido: $controlType")
+                
+                when (controlType) {
+                    "play_pause" -> {
+                        // Notificar a Flutter sobre el cambio
+                        val data = mapOf(
+                            "type" to "pip_control",
+                            "action" to "play_pause"
+                        )
+                        channel.invokeMethod("onPipControl", data)
+                    }
+                }
+            }
+        }
+        
+        val filter = IntentFilter(ACTION_MEDIA_CONTROL)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            currentActivity.registerReceiver(pipControlsReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            currentActivity.registerReceiver(pipControlsReceiver, filter)
+        }
+        
+        Log.d("PictureInPicturePlugin", "✅ BroadcastReceiver registrado para controles PiP")
+    }
+    
+    private fun unregisterPipControlsReceiver() {
+        val currentActivity = activity ?: return
+        
+        pipControlsReceiver?.let {
+            try {
+                currentActivity.unregisterReceiver(it)
+                pipControlsReceiver = null
+                Log.d("PictureInPicturePlugin", "✅ BroadcastReceiver desregistrado")
+            } catch (e: Exception) {
+                Log.e("PictureInPicturePlugin", "❌ Error desregistrando receiver: ${e.message}")
+            }
+        }
+    }
+    
     private fun exitPictureInPictureMode(): Boolean {
-        // En Android, el usuario debe salir manualmente del modo PiP
-        // No hay una API directa para forzar la salida
+        // Desregistrar el receiver al salir del PiP
+        unregisterPipControlsReceiver()
         return true
     }
 
@@ -248,6 +392,7 @@ class PictureInPicturePlugin: FlutterPlugin, MethodCallHandler, ActivityAware, E
 
     override fun onDetachedFromActivity() {
         Log.d("PictureInPicturePlugin", "❌ Plugin detached from activity")
+        unregisterPipControlsReceiver()
         activity = null
     }
 

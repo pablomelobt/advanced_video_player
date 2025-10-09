@@ -103,7 +103,10 @@ class _AirPlayStatusButtonState extends State<AirPlayStatusButton> {
         });
         widget.onAirPlayStateChanged?.call(isActive);
       }
-    } catch (e) {}
+    } catch (e) {
+      debugPrint(
+          '[AirPlayStatusButton] Error al verificar el estado de AirPlay: $e');
+    }
   }
 
   @override
