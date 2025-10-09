@@ -561,6 +561,54 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
         player?.volume = volume
     }
     
+    func getCurrentPosition() -> Double {
+        guard let player = player else { return 0.0 }
+        return CMTimeGetSeconds(player.currentTime())
+    }
+    
+    func getDuration() -> Double {
+        guard let player = player,
+              let duration = player.currentItem?.duration else { return 0.0 }
+        let durationSeconds = CMTimeGetSeconds(duration)
+        return durationSeconds.isNaN || durationSeconds.isInfinite ? 0.0 : durationSeconds
+    }
+    
+    func isBuffering() -> Bool {
+        guard let player = player,
+              let currentItem = player.currentItem else { return false }
+        
+        // Verificar el estado de reproducción del player
+        let timeControlStatus = player.timeControlStatus
+        
+        // Si está pausado manualmente, NO está buffering
+        if player.rate == 0 && timeControlStatus == .paused {
+            return false
+        }
+        
+        // Si está reproduciéndose normalmente, NO está buffering
+        if timeControlStatus == .playing {
+            return false
+        }
+        
+        // Si está esperando para reproducir, SÍ está buffering
+        if timeControlStatus == .waitingToPlayAtSpecifiedRate {
+            // Verificar la razón de la espera
+            if let reason = player.reasonForWaitingToPlay {
+                // Solo considerarlo buffering si es por falta de datos
+                return reason == .toMinimizeStalls || 
+                       reason == .evaluatingBufferingRate ||
+                       reason == .noItemToPlay
+            }
+            return true
+        }
+        
+        // Verificación adicional: buffer vacío Y no puede mantener reproducción
+        let bufferEmpty = currentItem.isPlaybackBufferEmpty
+        let likelyToKeepUp = currentItem.isPlaybackLikelyToKeepUp
+        
+        return bufferEmpty && !likelyToKeepUp
+    }
+    
     override func layoutSubviews() {
         super.layoutSubviews()
         playerLayer?.frame = bounds
@@ -756,6 +804,15 @@ class PlayerViewWrapper: NSObject, FlutterPlatformView {
             } else {
                 result(FlutterError(code: "bad_args", message: "URL inválida", details: nil))
             }
+            
+        case "getCurrentPosition":
+            result(playerView.getCurrentPosition())
+            
+        case "getDuration":
+            result(playerView.getDuration())
+            
+        case "isBuffering":
+            result(playerView.isBuffering())
             
         default:
             result(FlutterMethodNotImplemented)

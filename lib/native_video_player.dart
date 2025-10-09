@@ -195,6 +195,39 @@ class NativeVideoPlayerController {
     }
   }
 
+  /// Obtiene la posición actual del video en segundos
+  Future<double> getCurrentPosition() async {
+    try {
+      final position = await _methodChannel.invokeMethod('getCurrentPosition');
+      return (position as num?)?.toDouble() ?? 0.0;
+    } catch (e) {
+      debugPrint('[NativeVideoPlayer] Error al obtener posición: $e');
+      return 0.0;
+    }
+  }
+
+  /// Obtiene la duración total del video en segundos
+  Future<double> getDuration() async {
+    try {
+      final duration = await _methodChannel.invokeMethod('getDuration');
+      return (duration as num?)?.toDouble() ?? 0.0;
+    } catch (e) {
+      debugPrint('[NativeVideoPlayer] Error al obtener duración: $e');
+      return 0.0;
+    }
+  }
+
+  /// Verifica si el video está buffering/cargando
+  Future<bool> isBuffering() async {
+    try {
+      final buffering = await _methodChannel.invokeMethod('isBuffering');
+      return buffering as bool? ?? false;
+    } catch (e) {
+      debugPrint('[NativeVideoPlayer] Error al verificar buffering: $e');
+      return false;
+    }
+  }
+
   /// Limpia los recursos
   void dispose() {
     // Cleanup si es necesario

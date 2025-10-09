@@ -138,7 +138,6 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                 videoSource: _videoUrl,
 
                 // 🆕 OPCIONAL: Imagen de preview/thumbnail
-                // Descomenta la siguiente línea para usar un thumbnail personalizado
                 previewImageUrl:
                     'https://i.vimeocdn.com/video/1056828543-d9012e5ba116e7e91acebb15be11a7845a638852472b3791d05e214638a0091e-d?region=us',
 
@@ -177,11 +176,6 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
 
                 // 🆕 NUEVO: Usar reproductor nativo en iOS para mejor PiP
                 useNativePlayerOnIOS: true,
-
-                // Metadatos del video
-                videoTitle: 'Big Buck Bunny - Demostración',
-                videoDescription:
-                    'Un video de demostración para probar el reproductor avanzado con funcionalidades de compartir pantalla',
               ),
             ),
 

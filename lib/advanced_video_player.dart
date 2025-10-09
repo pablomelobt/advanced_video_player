@@ -107,6 +107,8 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   ScreenSharingState _screenSharingState = ScreenSharingState.disconnected;
   String? _currentPairingCode;
   bool _isPairing = false;
+  double _lastNativeVideoPosition =
+      0.0; // Guarda la última posición del video nativo
   Timer? _pairingTimer;
 
   // Getter para saber si estamos usando el reproductor nativo
@@ -565,17 +567,32 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   void _toggleFullscreen() async {
     // Si estamos usando el reproductor nativo, abrir página fullscreen con NativeVideoPlayer
     if (_useNativePlayer) {
-      await Navigator.of(context).push(
+      // Guardar la posición actual si hay un controller
+      if (_nativeController != null) {
+        _lastNativeVideoPosition =
+            await _nativeController!.getCurrentPosition();
+      }
+
+      // Navegar a fullscreen y esperar el resultado (posición al cerrar)
+      final result = await Navigator.of(context).push<double>(
         MaterialPageRoute(
           builder: (context) => _NativeFullscreenPage(
             url: widget.videoSource,
             primaryColor: widget.primaryColor,
             secondaryColor: widget.secondaryColor,
             enablePictureInPicture: widget.enablePictureInPicture,
+            initialPosition:
+                _lastNativeVideoPosition, // Pasar posición guardada
           ),
           fullscreenDialog: true,
         ),
       );
+
+      // Si se devuelve una posición al cerrar, guardarla
+      if (result != null) {
+        _lastNativeVideoPosition = result;
+      }
+
       return;
     }
 
@@ -945,35 +962,145 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       onTap: () {
         _toggleFullscreen();
       },
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [widget.primaryColor, widget.secondaryColor],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.play_circle_filled,
-                size: 80,
-                color: Colors.white.withOpacity(0.9),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Toca para reproducir en pantalla completa',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Fondo: Preview/thumbnail o gradiente
+          if (widget.previewImageUrl != null &&
+              widget.previewImageUrl!.isNotEmpty)
+            Image.network(
+              widget.previewImageUrl!,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [widget.primaryColor, widget.secondaryColor],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                );
+              },
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [widget.primaryColor, widget.secondaryColor],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                      valueColor:
+                          const AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                );
+              },
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [widget.primaryColor, widget.secondaryColor],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
               ),
-            ],
+            ),
+
+          // Overlay oscuro sutil para mejorar visibilidad del botón
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(0.2),
+                  Colors.transparent,
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.4),
+                ],
+              ),
+            ),
           ),
-        ),
+
+          // Botón de play centrado
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: widget.primaryColor.withOpacity(0.9),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 20,
+                    spreadRadius: 5,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.play_arrow,
+                size: 60,
+                color: Colors.white,
+              ),
+            ),
+          ),
+
+          // Título del video (si está disponible)
+          if (widget.videoTitle != null)
+            Positioned(
+              bottom: 20,
+              left: 20,
+              right: 20,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.videoTitle!,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black,
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (widget.videoDescription != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.videoDescription!,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 14,
+                        shadows: const [
+                          Shadow(
+                            color: Colors.black,
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -2249,12 +2376,14 @@ class _NativeFullscreenPage extends StatefulWidget {
   final Color primaryColor;
   final Color secondaryColor;
   final bool enablePictureInPicture;
+  final double initialPosition; // Posición inicial del video en segundos
 
   const _NativeFullscreenPage({
     required this.url,
     required this.primaryColor,
     required this.secondaryColor,
     required this.enablePictureInPicture,
+    this.initialPosition = 0.0, // Por defecto inicia en 0
   });
 
   @override
@@ -2266,6 +2395,11 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
   bool _showControls = true;
   bool _isPlaying = true;
   Timer? _hideControlsTimer;
+  Timer? _progressTimer;
+  double _currentPosition = 0.0;
+  double _duration = 0.0;
+  bool _isDragging = false;
+  bool _isBuffering = true; // Inicia como true para mostrar loading inicial
 
   @override
   void initState() {
@@ -2277,6 +2411,26 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
       DeviceOrientation.landscapeRight,
     ]);
     _startHideControlsTimer();
+    _startProgressTimer();
+  }
+
+  void _startProgressTimer() {
+    _progressTimer?.cancel();
+    _progressTimer =
+        Timer.periodic(const Duration(milliseconds: 500), (timer) async {
+      if (_controller != null && !_isDragging) {
+        final position = await _controller!.getCurrentPosition();
+        final duration = await _controller!.getDuration();
+        final buffering = await _controller!.isBuffering();
+        if (mounted) {
+          setState(() {
+            _currentPosition = position;
+            _duration = duration;
+            _isBuffering = buffering;
+          });
+        }
+      }
+    });
   }
 
   void _startHideControlsTimer() {
@@ -2301,169 +2455,328 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Reproductor nativo
-          NativeVideoPlayer(
-            url: widget.url,
-            autoplay: true,
-            onViewCreated: (controller) {
-              setState(() {
-                _controller = controller;
-              });
-            },
-          ),
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) async {
+        if (didPop) {
+          // La posición se devuelve en el Navigator.pop del botón de atrás
+          // Este callback se ejecuta después del pop
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Reproductor nativo
+            NativeVideoPlayer(
+              url: widget.url,
+              autoplay: true,
+              onViewCreated: (controller) async {
+                setState(() {
+                  _controller = controller;
+                });
 
-          // Capa invisible para capturar toques
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: _toggleControls,
-              behavior: HitTestBehavior.translucent,
-              child: Container(
-                color: Colors.transparent,
-              ),
+                // Si hay una posición inicial, hacer seek a esa posición
+                if (widget.initialPosition > 0) {
+                  await Future.delayed(const Duration(
+                      milliseconds: 500)); // Esperar a que el video cargue
+                  await controller.seek(widget.initialPosition);
+                  setState(() {
+                    _currentPosition = widget.initialPosition;
+                    _isBuffering = true; // Mostrar loading mientras busca
+                  });
+                }
+              },
             ),
-          ),
 
-          // Controles overlay
-          if (_showControls)
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.7),
-                    Colors.transparent,
-                    Colors.transparent,
-                    Colors.black.withOpacity(0.7),
-                  ],
+            // Capa invisible para capturar toques
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: _toggleControls,
+                behavior: HitTestBehavior.translucent,
+                child: Container(
+                  color: Colors.transparent,
                 ),
               ),
-              child: SafeArea(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Header - Botón atrás
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.arrow_back_ios_new,
-                                color: Colors.white, size: 28),
-                            onPressed: () => Navigator.pop(context),
-                          ),
-                          const Spacer(),
-                          Row(
-                            children: [
-                              // Botón AirPlay nativo
-                              if (Platform.isIOS)
-                                const AirPlayButton(
-                                  width: 40,
-                                  height: 40,
-                                ),
-                              if (Platform.isIOS) const SizedBox(width: 8),
-                              // Botón PiP
-                              if (!Platform.isIOS &&
-                                  widget.enablePictureInPicture)
-                                _buildActionButton(
-                                  icon: Icons.picture_in_picture_alt,
-                                  label: '',
-                                  onPressed: () async {
-                                    if (_controller != null) {
-                                      final messenger =
-                                          ScaffoldMessenger.of(context);
-                                      try {
-                                        await _controller!.startPiP();
-                                        await Future.delayed(
-                                            const Duration(milliseconds: 500));
+            ),
 
-                                        if (mounted && Platform.isIOS) {
-                                          SystemNavigator.pop();
+            // Indicador de loading/buffering (siempre visible cuando está cargando)
+            if (_isBuffering)
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(widget.primaryColor),
+                        strokeWidth: 3,
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Cargando...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Controles overlay
+            if (_showControls)
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.7),
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.7),
+                    ],
+                  ),
+                ),
+                child: SafeArea(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Header - Botón atrás
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.arrow_back_ios_new,
+                                  color: Colors.white, size: 28),
+                              onPressed: () async {
+                                // Obtener posición actual y devolverla al cerrar
+                                double currentPos = _currentPosition;
+                                if (_controller != null) {
+                                  currentPos =
+                                      await _controller!.getCurrentPosition();
+                                }
+                                if (mounted) {
+                                  Navigator.pop(context, currentPos);
+                                }
+                              },
+                            ),
+                            const Spacer(),
+                            Row(
+                              children: [
+                                // Botón AirPlay nativo
+                                if (Platform.isIOS)
+                                  const AirPlayButton(
+                                    width: 40,
+                                    height: 40,
+                                  ),
+                                if (Platform.isIOS) const SizedBox(width: 8),
+                                // Botón PiP
+                                if (!Platform.isIOS &&
+                                    widget.enablePictureInPicture)
+                                  _buildActionButton(
+                                    icon: Icons.picture_in_picture_alt,
+                                    label: '',
+                                    onPressed: () async {
+                                      if (_controller != null) {
+                                        final messenger =
+                                            ScaffoldMessenger.of(context);
+                                        try {
+                                          await _controller!.startPiP();
+                                          await Future.delayed(const Duration(
+                                              milliseconds: 500));
+
+                                          if (mounted && Platform.isIOS) {
+                                            SystemNavigator.pop();
+                                          }
+                                        } catch (e) {
+                                          if (!mounted) return;
+                                          messenger.showSnackBar(
+                                            SnackBar(
+                                              content: Text('Error: $e'),
+                                              backgroundColor: Colors.red,
+                                              duration:
+                                                  const Duration(seconds: 2),
+                                            ),
+                                          );
                                         }
-                                      } catch (e) {
-                                        if (!mounted) return;
-                                        messenger.showSnackBar(
-                                          SnackBar(
-                                            content: Text('Error: $e'),
-                                            backgroundColor: Colors.red,
-                                            duration:
-                                                const Duration(seconds: 2),
-                                          ),
-                                        );
                                       }
-                                    }
-                                  },
-                                ),
-                            ],
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Controles centrales
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Retroceder 10 segundos
+                          _buildCircularButton(
+                            icon: Icons.replay_10,
+                            onPressed: () async {
+                              if (_controller != null) {
+                                setState(() =>
+                                    _isBuffering = true); // Mostrar loading
+
+                                // Obtener posición actual y retroceder 10 segundos
+                                final currentPos =
+                                    await _controller!.getCurrentPosition();
+                                final newPos =
+                                    (currentPos - 10).clamp(0.0, _duration);
+                                await _controller!.seek(newPos);
+
+                                setState(() => _currentPosition = newPos);
+                                _startHideControlsTimer();
+
+                                // Dar tiempo para que el player actualice su estado
+                                await Future.delayed(
+                                    const Duration(milliseconds: 300));
+                              }
+                            },
+                          ),
+                          const SizedBox(width: 40),
+                          // Play/Pause
+                          _buildCircularButton(
+                            icon: _isPlaying ? Icons.pause : Icons.play_arrow,
+                            size: 70,
+                            onPressed: () {
+                              if (_controller != null) {
+                                if (_isPlaying) {
+                                  _controller!.pause();
+                                } else {
+                                  _controller!.play();
+                                }
+                                setState(() {
+                                  _isPlaying = !_isPlaying;
+                                });
+                                _startHideControlsTimer();
+                              }
+                            },
+                          ),
+                          const SizedBox(width: 40),
+                          // Avanzar 10 segundos
+                          _buildCircularButton(
+                            icon: Icons.forward_10,
+                            onPressed: () async {
+                              if (_controller != null) {
+                                setState(() =>
+                                    _isBuffering = true); // Mostrar loading
+
+                                // Obtener posición actual y avanzar 10 segundos
+                                final currentPos =
+                                    await _controller!.getCurrentPosition();
+                                final newPos =
+                                    (currentPos + 10).clamp(0.0, _duration);
+                                await _controller!.seek(newPos);
+
+                                setState(() => _currentPosition = newPos);
+                                _startHideControlsTimer();
+
+                                // Dar tiempo para que el player actualice su estado
+                                await Future.delayed(
+                                    const Duration(milliseconds: 300));
+                              }
+                            },
                           ),
                         ],
                       ),
-                    ),
 
-                    // Controles centrales
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Retroceder
-                        _buildCircularButton(
-                          icon: Icons.replay_10,
-                          onPressed: () {
-                            if (_controller != null) {
-                              _controller!.seek(0);
-                              _startHideControlsTimer();
-                            }
-                          },
+                      // Footer - Barra de progreso
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16.0, vertical: 8.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Barra de progreso arrastrable
+                            SliderTheme(
+                              data: SliderThemeData(
+                                trackHeight: 4.0,
+                                thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 8.0),
+                                overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 16.0),
+                                activeTrackColor: widget.primaryColor,
+                                inactiveTrackColor:
+                                    Colors.white.withOpacity(0.3),
+                                thumbColor: Colors.white,
+                                overlayColor:
+                                    widget.primaryColor.withOpacity(0.3),
+                              ),
+                              child: Slider(
+                                value: _duration > 0
+                                    ? (_currentPosition / _duration)
+                                        .clamp(0.0, 1.0)
+                                    : 0.0,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _isDragging = true;
+                                    _currentPosition = value * _duration;
+                                  });
+                                },
+                                onChangeEnd: (value) async {
+                                  setState(() {
+                                    _isDragging = false;
+                                    _isBuffering =
+                                        true; // Mostrar loading al hacer seek
+                                  });
+                                  if (_controller != null) {
+                                    await _controller!.seek(value * _duration);
+                                    // Dar tiempo para que el player actualice su estado
+                                    await Future.delayed(
+                                        const Duration(milliseconds: 300));
+                                    // El timer actualizará _isBuffering automáticamente
+                                  }
+                                  _startHideControlsTimer();
+                                },
+                              ),
+                            ),
+                            // Indicadores de tiempo
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8.0),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    _formatDuration(_currentPosition),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  Text(
+                                    _formatDuration(_duration),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 40),
-                        // Play/Pause
-                        _buildCircularButton(
-                          icon: _isPlaying ? Icons.pause : Icons.play_arrow,
-                          size: 70,
-                          onPressed: () {
-                            if (_controller != null) {
-                              if (_isPlaying) {
-                                _controller!.pause();
-                              } else {
-                                _controller!.play();
-                              }
-                              setState(() {
-                                _isPlaying = !_isPlaying;
-                              });
-                              _startHideControlsTimer();
-                            }
-                          },
-                        ),
-                        const SizedBox(width: 40),
-                        // Avanzar
-                        _buildCircularButton(
-                          icon: Icons.forward_10,
-                          onPressed: () {
-                            if (_controller != null) {
-                              _startHideControlsTimer();
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-
-                    // Footer
-                    const Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2504,9 +2817,18 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
     );
   }
 
+  String _formatDuration(double seconds) {
+    if (seconds.isNaN || seconds.isInfinite) return '0:00';
+    final duration = Duration(seconds: seconds.toInt());
+    final minutes = duration.inMinutes;
+    final secs = duration.inSeconds % 60;
+    return '$minutes:${secs.toString().padLeft(2, '0')}';
+  }
+
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
+    _progressTimer?.cancel();
     _controller?.dispose();
     // Restaurar orientación
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
