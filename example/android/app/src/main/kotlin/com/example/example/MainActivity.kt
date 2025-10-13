@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
+import com.google.android.gms.cast.framework.CastContext
 
 class MainActivity: FlutterActivity() {
     private val TAG = "MainActivity"
@@ -12,6 +13,16 @@ class MainActivity: FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "MainActivity creada")
+        
+        
+        // Inicializar CastContext en el MainActivity
+        try {
+            Log.d(TAG, "🔧 Inicializando CastContext en MainActivity...")
+            val castContext = CastContext.getSharedInstance(this)
+            Log.d(TAG, "✅ CastContext inicializado exitosamente en MainActivity")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error inicializando CastContext en MainActivity: ${e.message}")
+        }
     }
     
     override fun onPictureInPictureModeChanged(

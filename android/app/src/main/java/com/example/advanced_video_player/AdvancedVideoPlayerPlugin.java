@@ -142,40 +142,51 @@ public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandl
 
     private void initializeCast() {
         try {
+            Log.d("AdvancedVideoPlayer", "🔧 Iniciando inicialización de Cast...");
             if (isGoogleCastSupported()) {
-                CastContext.getSharedInstance(context);
-                sessionManager = CastContext.getSharedInstance(context).getSessionManager();
+                Log.d("AdvancedVideoPlayer", "✅ Google Cast está soportado, obteniendo CastContext...");
+                
+                CastContext castContext = CastContext.getSharedInstance(context);
+                Log.d("AdvancedVideoPlayer", "✅ CastContext obtenido exitosamente");
+                
+                sessionManager = castContext.getSessionManager();
+                Log.d("AdvancedVideoPlayer", "✅ SessionManager obtenido exitosamente");
                 
                 sessionManagerListener = new SessionManagerListener<CastSession>() {
                     @Override
                     public void onSessionStarted(CastSession session, String sessionId) {
                         castSession = session;
-                        Log.d("AdvancedVideoPlayer", "Cast session started");
+                        Log.d("AdvancedVideoPlayer", "✅ Cast session started: " + sessionId);
                     }
 
                     @Override
                     public void onSessionResumed(CastSession session, boolean wasSuspended) {
                         castSession = session;
-                        Log.d("AdvancedVideoPlayer", "Cast session resumed");
+                        Log.d("AdvancedVideoPlayer", "✅ Cast session resumed");
                     }
 
                     @Override
                     public void onSessionSuspended(CastSession session, int error) {
                         castSession = null;
-                        Log.d("AdvancedVideoPlayer", "Cast session suspended");
+                        Log.d("AdvancedVideoPlayer", "⚠️ Cast session suspended: " + error);
                     }
 
                     @Override
                     public void onSessionEnded(CastSession session, int error) {
                         castSession = null;
-                        Log.d("AdvancedVideoPlayer", "Cast session ended");
+                        Log.d("AdvancedVideoPlayer", "❌ Cast session ended: " + error);
                     }
                 };
                 
                 sessionManager.addSessionManagerListener(sessionManagerListener);
+                Log.d("AdvancedVideoPlayer", "✅ SessionManagerListener agregado exitosamente");
+                Log.d("AdvancedVideoPlayer", "🎉 Inicialización de Cast completada exitosamente");
+            } else {
+                Log.e("AdvancedVideoPlayer", "❌ Google Cast no está soportado en este dispositivo");
             }
         } catch (Exception e) {
-            Log.e("AdvancedVideoPlayer", "Error initializing Cast: " + e.getMessage());
+            Log.e("AdvancedVideoPlayer", "❌ Error inicializando Cast: " + e.getMessage());
+            Log.e("AdvancedVideoPlayer", "❌ Stack trace: ", e);
         }
     }
 
@@ -184,68 +195,132 @@ public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandl
     }
 
     private boolean isGoogleCastSupported() {
-        // Por ahora, siempre reportar soporte para testing
-        // En producción, puedes descomentar las líneas de abajo para verificar Google Play Services
-        /*
-        GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
-        int resultCode = apiAvailability.isGooglePlayServicesAvailable(context);
-        boolean supported = resultCode == ConnectionResult.SUCCESS;
-        Log.d("AdvancedVideoPlayer", "Google Cast support check: " + supported + " (code: " + resultCode + ")");
-        return supported;
-        */
-        Log.d("AdvancedVideoPlayer", "Google Cast support: SIMULATED (always true for testing)");
-        return true;
+        try {
+            GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
+            int resultCode = apiAvailability.isGooglePlayServicesAvailable(context);
+            boolean supported = resultCode == ConnectionResult.SUCCESS;
+            Log.d("AdvancedVideoPlayer", "Google Cast support check: " + supported + " (code: " + resultCode + ")");
+            return supported;
+        } catch (Exception e) {
+            Log.e("AdvancedVideoPlayer", "Error checking Google Cast support: " + e.getMessage());
+            return false;
+        }
     }
 
     private void discoverCastDevices(Result result) {
         try {
-            Log.d("AdvancedVideoPlayer", "🔍 Iniciando descubrimiento real de dispositivos Chromecast");
+            Log.d("AdvancedVideoPlayer", "🔍 ===== INICIANDO DESCUBRIMIENTO DE DISPOSITIVOS =====");
+            
+            // Verificar que Google Play Services esté disponible
+            if (!isGoogleCastSupported()) {
+                Log.e("AdvancedVideoPlayer", "❌ Google Play Services no disponible");
+                result.success(new ArrayList<>());
+                return;
+            }
+            
+            Log.d("AdvancedVideoPlayer", "✅ Google Play Services está disponible");
             
             // Limpiar lista anterior
             discoveredDevices.clear();
+            Log.d("AdvancedVideoPlayer", "🧹 Lista de dispositivos limpiada");
             
             // Obtener el DiscoveryManager
-            discoveryManager = CastContext.getSharedInstance(context).getDiscoveryManager();
+            Log.d("AdvancedVideoPlayer", "🔧 Obteniendo CastContext...");
+            CastContext castContext = CastContext.getSharedInstance(context);
+            Log.d("AdvancedVideoPlayer", "✅ CastContext obtenido exitosamente");
+            
+            Log.d("AdvancedVideoPlayer", "🔧 Obteniendo DiscoveryManager...");
+            discoveryManager = castContext.getDiscoveryManager();
+            Log.d("AdvancedVideoPlayer", "✅ DiscoveryManager obtenido exitosamente");
             
             // Configurar listener para dispositivos descubiertos
+            Log.d("AdvancedVideoPlayer", "🔧 Configurando DiscoveryManagerListener...");
             discoveryManager.setDiscoveryManagerListener(new DiscoveryManagerListener() {
                 @Override
                 public void onDeviceAdded(CastDevice device) {
-                    Log.d("AdvancedVideoPlayer", "📱 Dispositivo encontrado: " + device.getFriendlyName());
-                    discoveredDevices.add(device);
+                    Log.d("AdvancedVideoPlayer", "🎉 ¡DISPOSITIVO ENCONTRADO! Nombre: " + device.getFriendlyName() + " | ID: " + device.getDeviceId() + " | IP: " + device.getIpAddress());
+                    if (!discoveredDevices.contains(device)) {
+                        discoveredDevices.add(device);
+                        Log.d("AdvancedVideoPlayer", "📝 Dispositivo agregado a la lista. Total: " + discoveredDevices.size());
+                    } else {
+                        Log.d("AdvancedVideoPlayer", "⚠️ Dispositivo ya estaba en la lista");
+                    }
                 }
                 
                 @Override
                 public void onDeviceRemoved(CastDevice device) {
-                    Log.d("AdvancedVideoPlayer", "📱 Dispositivo removido: " + device.getFriendlyName());
+                    Log.d("AdvancedVideoPlayer", "❌ Dispositivo removido: " + device.getFriendlyName());
                     discoveredDevices.remove(device);
+                    Log.d("AdvancedVideoPlayer", "📝 Dispositivo removido de la lista. Total: " + discoveredDevices.size());
                 }
             });
+            Log.d("AdvancedVideoPlayer", "✅ DiscoveryManagerListener configurado exitosamente");
             
             // Iniciar descubrimiento
+            Log.d("AdvancedVideoPlayer", "🚀 Iniciando descubrimiento de dispositivos...");
             discoveryManager.startDiscovery();
+            Log.d("AdvancedVideoPlayer", "✅ Descubrimiento iniciado exitosamente");
             
-            // Esperar un poco para que se descubran dispositivos
+            // Log cada segundo para ver el progreso
+            for (int i = 1; i <= 5; i++) {
+                final int second = i;
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                    Log.d("AdvancedVideoPlayer", "⏱️ Segundo " + second + "/5 - Dispositivos encontrados hasta ahora: " + discoveredDevices.size());
+                }, i * 1000);
+            }
+            
+            // Esperar más tiempo para que se descubran dispositivos (5 segundos)
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                discoveryManager.stopDiscovery();
-                
-                // Convertir dispositivos descubiertos a formato para Flutter
-                List<Map<String, Object>> devices = new ArrayList<>();
-                for (CastDevice device : discoveredDevices) {
-                    Map<String, Object> deviceMap = new HashMap<>();
-                    deviceMap.put("id", device.getDeviceId());
-                    deviceMap.put("name", device.getFriendlyName());
-                    deviceMap.put("type", "chromecast");
-                    deviceMap.put("isConnected", false);
-                    devices.add(deviceMap);
+                try {
+                    Log.d("AdvancedVideoPlayer", "⏰ Tiempo de descubrimiento completado, deteniendo búsqueda...");
+                    if (discoveryManager != null) {
+                        discoveryManager.stopDiscovery();
+                        Log.d("AdvancedVideoPlayer", "✅ Descubrimiento detenido");
+                    }
+                    
+                    // Convertir dispositivos descubiertos a formato para Flutter
+                    List<Map<String, Object>> devices = new ArrayList<>();
+                    Log.d("AdvancedVideoPlayer", "🔄 Convirtiendo " + discoveredDevices.size() + " dispositivos al formato Flutter...");
+                    
+                    for (CastDevice device : discoveredDevices) {
+                        Map<String, Object> deviceMap = new HashMap<>();
+                        deviceMap.put("id", device.getDeviceId());
+                        deviceMap.put("name", device.getFriendlyName());
+                        deviceMap.put("type", "chromecast");
+                        deviceMap.put("isConnected", false);
+                        devices.add(deviceMap);
+                        Log.d("AdvancedVideoPlayer", "📱 Dispositivo convertido: " + device.getFriendlyName());
+                    }
+                    
+                    Log.d("AdvancedVideoPlayer", "🎉 ===== DESCUBRIMIENTO COMPLETADO =====");
+                    Log.d("AdvancedVideoPlayer", "📊 Total de dispositivos encontrados: " + devices.size());
+                    
+                    if (devices.isEmpty()) {
+                        Log.w("AdvancedVideoPlayer", "⚠️ ===== NO SE ENCONTRARON DISPOSITIVOS =====");
+                        Log.w("AdvancedVideoPlayer", "🔍 Posibles causas:");
+                        Log.w("AdvancedVideoPlayer", "   - Los dispositivos Chromecast no están en la misma red WiFi");
+                        Log.w("AdvancedVideoPlayer", "   - Los dispositivos están apagados o en modo de suspensión");
+                        Log.w("AdvancedVideoPlayer", "   - Problema con la configuración de red");
+                        Log.w("AdvancedVideoPlayer", "   - Permisos de red insuficientes");
+                    } else {
+                        Log.i("AdvancedVideoPlayer", "✅ Dispositivos encontrados exitosamente:");
+                        for (int i = 0; i < devices.size(); i++) {
+                            Map<String, Object> device = devices.get(i);
+                            Log.i("AdvancedVideoPlayer", "   " + (i+1) + ". " + device.get("name") + " (ID: " + device.get("id") + ")");
+                        }
+                    }
+                    
+                    result.success(devices);
+                } catch (Exception e) {
+                    Log.e("AdvancedVideoPlayer", "❌ Error al finalizar descubrimiento: " + e.getMessage());
+                    Log.e("AdvancedVideoPlayer", "❌ Stack trace: ", e);
+                    result.success(new ArrayList<>());
                 }
-                
-                Log.d("AdvancedVideoPlayer", "✅ Descubrimiento completado. Encontrados " + devices.size() + " dispositivos reales");
-                result.success(devices);
-            }, 3000); // Esperar 3 segundos para descubrimiento
+            }, 5000); // Esperar 5 segundos para descubrimiento
             
         } catch (Exception e) {
-            Log.e("AdvancedVideoPlayer", "❌ Error en descubrimiento de dispositivos: " + e.getMessage());
+            Log.e("AdvancedVideoPlayer", "❌ Error crítico en descubrimiento de dispositivos: " + e.getMessage());
+            Log.e("AdvancedVideoPlayer", "❌ Stack trace: ", e);
             result.success(new ArrayList<>()); // Devolver lista vacía en caso de error
         }
     }

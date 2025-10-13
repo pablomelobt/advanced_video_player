@@ -1,3 +1,109 @@
+## 0.0.3 - 2025-10-09
+
+### 🎯 Versión Release Estable
+
+Esta versión consolida todas las mejoras y optimizaciones, preparando el paquete para producción con documentación completa y código profesional.
+
+### ✨ Nuevas Características
+
+#### 🖼️ Preview/Thumbnail Personalizado
+- ✅ **Parámetro `previewImageUrl`**: Muestra una imagen de preview mientras el video carga
+- ✅ **Mejora de UX**: Los usuarios ven contenido inmediatamente, no una pantalla negra
+- ✅ **Opcional y configurable**: Se puede omitir si no es necesario
+- ✅ **Soporte para URLs remotas**: Compatible con cualquier imagen web
+
+#### 🎬 Reproductor Nativo iOS Mejorado
+- ✅ **Parámetro `useNativePlayerOnIOS`**: Usa reproductor nativo optimizado en iOS
+- ✅ **Mejor PiP**: Experiencia Picture-in-Picture mejorada sin dummy views
+- ✅ **Restauración automática**: Navega a fullscreen cuando el usuario regresa desde PiP
+- ✅ **Múltiples instancias**: Soporta varios reproductores independientes
+
+### 📚 Documentación Profesional
+
+#### 📝 Código Comentado
+- ✅ **Comentarios de nivel profesional**: Toda la API está documentada con DartDoc
+- ✅ **Ejemplos mejorados**: El ejemplo principal incluye comentarios explicativos detallados
+- ✅ **Estructura clara**: Secciones bien delimitadas y organizadas
+- ✅ **Guías inline**: Los comentarios explican el "por qué" además del "qué"
+
+#### 📖 README Actualizado
+- ✅ **Sección de preview/thumbnail**: Documentación del nuevo parámetro
+- ✅ **Ejemplos actualizados**: Todos los ejemplos incluyen las nuevas características
+- ✅ **Mejores explicaciones**: Descripciones más claras y concisas
+- ✅ **Tabla de compatibilidad**: Requisitos y versiones actualizadas
+
+### 🔧 Mejoras Técnicas
+
+#### 🎨 Experiencia de Usuario
+- ✅ **Carga visual mejorada**: Preview images reduce la percepción de tiempo de carga
+- ✅ **Transiciones suaves**: Animaciones optimizadas entre estados
+- ✅ **Feedback visual**: Indicadores claros de estado de carga
+
+#### 🛠️ Optimizaciones de Código
+- ✅ **Manejo de errores robusto**: Captura y gestión mejorada de excepciones
+- ✅ **Performance optimizada**: Carga condicional de recursos
+- ✅ **Memoria eficiente**: Mejor gestión del ciclo de vida de widgets
+
+### 📦 Dependencias
+
+Todas las dependencias se mantienen actualizadas:
+- ✅ `video_player: ^2.9.5` - Reproductor base optimizado
+- ✅ `url_launcher: ^6.3.1` - Lanzador de URLs actualizado
+- ✅ `qr_flutter: ^4.1.0` - Generación de códigos QR para compartir
+- ✅ `flutter_lints: ^3.0.0` - Análisis de código actualizado
+
+### 🎯 Compatibilidad
+
+- ✅ **Flutter**: >= 1.17.0
+- ✅ **Dart**: >= 3.4.4 < 4.0.0
+- ✅ **Android**: API 21+ (Android 5.0+)
+- ✅ **iOS**: 11.0+ (recomendado 15.0+ para mejor PiP)
+
+### 📝 Notas de Migración
+
+#### Actualización desde 0.0.2
+
+Esta versión es **100% compatible** con versiones anteriores. No se requieren cambios obligatorios.
+
+**Nuevas características opcionales:**
+```dart
+// Agregar preview image (opcional)
+AdvancedVideoPlayer(
+  videoSource: 'https://example.com/video.mp4',
+  previewImageUrl: 'https://example.com/thumbnail.jpg', // 🆕 Nuevo
+)
+
+// Usar reproductor nativo en iOS (opcional)
+AdvancedVideoPlayer(
+  videoSource: 'https://example.com/video.mp4',
+  useNativePlayerOnIOS: true, // 🆕 Nuevo (mejor PiP)
+)
+```
+
+### 🐛 Correcciones
+
+- ✅ **Manejo de estados mejorado**: Transiciones más fluidas entre estados de carga
+- ✅ **Gestión de memoria**: Mejor limpieza de recursos al hacer dispose
+- ✅ **Compatibilidad iOS**: Mejor soporte para diferentes versiones de iOS
+
+### 🎬 Ejemplo Actualizado
+
+El ejemplo principal (`example/lib/main.dart`) ahora incluye:
+- ✅ Comentarios profesionales de nivel producción
+- ✅ Documentación DartDoc completa
+- ✅ Secciones claramente delimitadas
+- ✅ Explicaciones detalladas de cada característica
+- ✅ Guía de uso de todas las nuevas funcionalidades
+
+### 🔗 Enlaces
+
+- **Repositorio**: https://github.com/pablomelobt/advanced_video_player.git
+- **Documentación**: https://github.com/pablomelobt/advanced_video_player.git#readme
+- **Issues**: https://github.com/pablomelobt/advanced_video_player/issues
+- **Ejemplo en vivo**: Ver `example/lib/main.dart`
+
+---
+
 ## 0.0.2 - 2025-01-27
 
 ### 🚀 Mejoras de Calidad y Optimización
