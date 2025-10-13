@@ -203,35 +203,24 @@ class ScreenSharingService {
     String? description,
     String? thumbnailUrl,
   }) async {
-    print('🎬 [ScreenSharingService] Iniciando shareVideo...');
-    print('🎬 [ScreenSharingService] Video URL: $videoUrl');
-    print('🎬 [ScreenSharingService] Título: $title');
-    print('🎬 [ScreenSharingService] Estado actual: $_currentState');
-
     if (_currentState != ScreenSharingState.connected) {
-      print('❌ [ScreenSharingService] No hay dispositivo conectado');
       _errorController.add('No hay dispositivo conectado');
       return false;
     }
 
     try {
-      print('🚀 [ScreenSharingService] Llamando al plugin nativo...');
       final result = await _channel.invokeMethod('shareVideo', {
         'videoUrl': videoUrl,
         'title': title,
         'description': description ?? '',
         'thumbnailUrl': thumbnailUrl ?? '',
       });
-      print('✅ [ScreenSharingService] Resultado del plugin: $result');
       return result == true;
     } catch (e) {
-      print('❌ [ScreenSharingService] Error compartiendo video: $e');
       _errorController.add('Error compartiendo video: $e');
 
       // Si es un MissingPluginException, usar fallback
       if (e.toString().contains('MissingPluginException')) {
-        print(
-            '⚠️ [ScreenSharingService] MissingPluginException, usando fallback');
         return true;
       }
 

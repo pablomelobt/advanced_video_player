@@ -1012,7 +1012,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     );
 
     try {
-      print('🔍 [FullscreenVideoPage] Iniciando búsqueda de dispositivos...');
       final devices = await _screenSharingService!.discoverDevices();
 
       // Cerrar el diálogo de carga
@@ -1041,8 +1040,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
         if (deviceId.contains('DEFAULT_ROUTE') ||
             deviceName.toLowerCase() == 'dispositivo' ||
             deviceName.toLowerCase() == 'device') {
-          print(
-              '⏭️ [FullscreenVideoPage] Ignorando dispositivo del sistema: $deviceName');
           continue;
         }
 
@@ -1053,11 +1050,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
       }
 
       final filteredDevices = uniqueDevices.values.toList();
-
-      print(
-          '🔍 [FullscreenVideoPage] Dispositivos encontrados: ${devices.length}');
-      print(
-          '✅ [FullscreenVideoPage] Dispositivos únicos: ${filteredDevices.length}');
 
       _showDeviceSelectionDialog(filteredDevices);
     } catch (e) {
@@ -1246,18 +1238,13 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     final deviceName = device['name'] as String;
 
     try {
-      print('🔗 [FullscreenVideoPage] Conectando a dispositivo: $deviceName');
-
       final success =
           await _screenSharingService!.connectToDevice(deviceId, deviceName);
       if (!mounted) return;
 
       if (success) {
-        print('✅ [FullscreenVideoPage] Conexión exitosa a $deviceName');
-
         // Pausar el video en el celular inmediatamente
         if (widget.controller.value.isPlaying) {
-          print('⏸️ [FullscreenVideoPage] Pausando video en el celular...');
           await widget.controller.pause();
           setState(() {
             _isPlaying = false;
@@ -1298,7 +1285,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
           ),
         );
       } else {
-        print('❌ [FullscreenVideoPage] Error en la conexión');
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1308,7 +1294,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
         );
       }
     } catch (e) {
-      print('❌ [FullscreenVideoPage] Excepción durante conexión: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1326,13 +1311,8 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     }
 
     try {
-      print('🎬 [FullscreenVideoPage] Compartiendo video actual...');
-      print('🎬 [FullscreenVideoPage] URL: ${widget.controller.dataSource}');
-      print('🎬 [FullscreenVideoPage] Título: ${widget.videoTitle}');
-
       // Pausar el video en el celular antes de compartir
       if (widget.controller.value.isPlaying) {
-        print('⏸️ [FullscreenVideoPage] Pausando video en el celular...');
         await widget.controller.pause();
         setState(() {
           _isPlaying = false;
@@ -1348,7 +1328,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
 
       if (!mounted) return;
       if (success) {
-        print('✅ [FullscreenVideoPage] Video compartido exitosamente');
         setState(() {
           _isVideoSharingActive = true;
         });
@@ -1359,7 +1338,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
           ),
         );
       } else {
-        print('❌ [FullscreenVideoPage] Error compartiendo el video');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Error compartiendo el video'),
@@ -1373,25 +1351,6 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
         SnackBar(
           content: Text('Error: $e'),
           backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _disconnectScreenSharing() async {
-    if (_screenSharingService != null) {
-      await _screenSharingService!.disconnect();
-      if (!mounted) return;
-      setState(() {
-        _isVideoSharingActive = false;
-        _canTransmit = false;
-        _transmitCountdown = 0;
-      });
-      _transmitDelayTimer?.cancel();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Desconectado del dispositivo'),
-          backgroundColor: Colors.orange,
         ),
       );
     }

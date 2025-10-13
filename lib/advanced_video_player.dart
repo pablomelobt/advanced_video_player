@@ -5,8 +5,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
-import 'package:qr_flutter/qr_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'fullscreen_video_page.dart';
 import 'picture_in_picture_service.dart';
 import 'screen_sharing_service.dart';
@@ -105,8 +103,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   bool _isInPictureInPictureMode = false;
   // bool _isAirPlayActive = false; // Removed unused field
   ScreenSharingState _screenSharingState = ScreenSharingState.disconnected;
-  String? _currentPairingCode;
-  bool _isPairing = false;
   double _lastNativeVideoPosition =
       0.0; // Guarda la última posición del video nativo
   Timer? _pairingTimer;
