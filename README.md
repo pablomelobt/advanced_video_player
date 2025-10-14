@@ -34,7 +34,7 @@ Agrega esta dependencia a tu archivo `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  advanced_video_player: ^0.0.1
+  advanced_video_player: ^0.0.3
 ```
 
 Luego ejecuta:
@@ -123,6 +123,8 @@ AdvancedVideoPlayer(
 | `videoDescription` | `String?` | `null` | Descripción del video para compartir |
 | `primaryColor` | `Color` | `Color(0xFF6366F1)` | Color principal del reproductor |
 | `secondaryColor` | `Color` | `Color(0xFF8B5CF6)` | Color secundario del reproductor |
+| `previewImageUrl` | `String?` | `null` | 🆕 URL de imagen de preview/thumbnail mientras carga el video |
+| `useNativePlayerOnIOS` | `bool` | `false` | 🆕 Usa reproductor nativo optimizado en iOS para mejor PiP |
 
 ## 🎯 Ejemplos de Uso
 
@@ -178,6 +180,10 @@ AdvancedVideoPlayer(
   onError: (error) => print('Error: $error'),
   skipDuration: 30,
   
+  // 🆕 Nuevas funcionalidades (v0.0.3)
+  previewImageUrl: 'https://example.com/thumbnail.jpg', // Preview mientras carga
+  useNativePlayerOnIOS: true, // Mejor PiP en iOS
+  
   // Funcionalidades avanzadas
   enablePictureInPicture: true,
   enableScreenSharing: true,
@@ -209,9 +215,11 @@ AdvancedVideoPlayer(
 ```dart
 AdvancedVideoPlayer(
   videoSource: 'https://stream.example.com/live.m3u8',
+  previewImageUrl: 'https://example.com/stream-thumbnail.jpg', // 🆕 Preview del stream
   enableScreenSharing: true,
   enableAirPlay: true,
   videoTitle: 'Stream en Vivo',
+  useNativePlayerOnIOS: true, // 🆕 Mejor rendimiento en iOS
 )
 ```
 
@@ -320,14 +328,14 @@ AdvancedVideoPlayer(
 
 ### Reproductor Nativo con Arquitectura Avanzada
 
-El `NativeVideoPlayer` es un nuevo widget que utiliza la arquitectura nativa de iOS sin dummy views, replicando el comportamiento de apps como **Disney+, Netflix, YouTube y Apple TV**.
+El `NativeVideoPlayer` es un nuevo widget que utiliza la arquitectura nativa de iOS sin dummy views.
 
 #### ✨ Características Únicas
 
 - ✅ **Sin dummy views** fuera de pantalla
 - ✅ **Comportamiento 100% nativo** de iOS
 - ✅ **PiP limpio** y sin efectos secundarios
-- ✅ **Restauración automática a fullscreen** como Disney+/Netflix
+- ✅ **Restauración automática a fullscreen** 
 - ✅ **Navegación inteligente** cuando el usuario vuelve desde PiP
 - ✅ **Múltiples instancias** de video independientes
 
@@ -372,7 +380,7 @@ NativeVideoPlayer(
   onPipRestoreToFullscreen: () {
     print('🎬 Usuario volvió desde PiP → Navegando a fullscreen');
     
-    // Navegar a pantalla fullscreen (como Disney+, Netflix, etc.)
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => FullscreenVideoPage(),
@@ -459,6 +467,20 @@ Las contribuciones son bienvenidas! Por favor:
 Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más detalles.
 
 ## 📝 Changelog
+
+### 0.0.3 (Actual)
+- 🖼️ **NUEVO**: Preview/Thumbnail personalizado con `previewImageUrl`
+- 🎬 **NUEVO**: Reproductor nativo iOS optimizado con `useNativePlayerOnIOS`
+- 📚 Documentación profesional completa con DartDoc
+- 🎨 Mejoras en la experiencia de usuario
+- 🔧 Optimizaciones de código y performance
+- 📖 Ejemplos actualizados con comentarios profesionales
+
+### 0.0.2
+- 🚀 Mejoras de calidad y optimización
+- 📦 Dependencias actualizadas (video_player 2.9.5, url_launcher 6.3.1)
+- 🐛 Correcciones de bugs y memory leaks
+- 📊 Análisis de código optimizado (0 errores de linter)
 
 ### 0.0.1
 - ✨ Versión inicial

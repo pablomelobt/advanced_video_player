@@ -5,8 +5,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
-import 'package:qr_flutter/qr_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'fullscreen_video_page.dart';
 import 'picture_in_picture_service.dart';
 import 'screen_sharing_service.dart';
@@ -25,6 +23,15 @@ class AdvancedVideoPlayer extends StatefulWidget {
 
   /// Callback cuando el video termina de reproducir
   final VoidCallback? onVideoEnd;
+
+  /// Callback cuando el video inicia de reproducir
+  final VoidCallback? onVideoStart;
+
+  /// Callback cuando el video pausa
+  final VoidCallback? onVideoPause;
+
+  /// Callback cuando el video play
+  final VoidCallback? onVideoPlay;
 
   /// Callback cuando ocurre un error
   final Function(String)? onError;
@@ -68,6 +75,9 @@ class AdvancedVideoPlayer extends StatefulWidget {
     required this.videoSource,
     this.isAsset = false,
     this.onVideoEnd,
+    this.onVideoStart,
+    this.onVideoPause,
+    this.onVideoPlay,
     this.onError,
     this.skipDuration = 10,
     this.enablePictureInPicture = true,
@@ -105,11 +115,12 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   bool _isInPictureInPictureMode = false;
   // bool _isAirPlayActive = false; // Removed unused field
   ScreenSharingState _screenSharingState = ScreenSharingState.disconnected;
-  String? _currentPairingCode;
-  bool _isPairing = false;
   double _lastNativeVideoPosition =
       0.0; // Guarda la última posición del video nativo
   Timer? _pairingTimer;
+  bool _hasVideoStarted =
+      false; // Para controlar si onVideoStart ya fue llamado
+  bool _hasVideoEnded = false; // Para controlar si onVideoEnd ya fue llamado
 
   // Getter para saber si estamos usando el reproductor nativo
   bool get _useNativePlayer => widget.useNativePlayerOnIOS && Platform.isIOS;
@@ -384,17 +395,19 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
       // Si usamos el reproductor nativo, no inicializamos el VideoPlayerController
       if (_useNativePlayer) {
-        // El NativeVideoPlayer se inicializa en fullscreen
+        // El NativeVideoPlayer se muestra en la vista normal también
         setState(() {
           _isLoading = false;
         });
 
-        // Auto-abrir en fullscreen
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted) {
-            _toggleFullscreen();
-          }
-        });
+        // Auto-abrir en fullscreen SI está habilitado
+        if (widget.autoEnterFullscreen) {
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted) {
+              _toggleFullscreen();
+            }
+          });
+        }
         return;
       }
 
@@ -477,19 +490,56 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       return;
     }
 
-    if (_controller!.value.position >= _controller!.value.duration) {
+    // Verificar si el video terminó (con margen de tolerancia de 500ms)
+    final duration = _controller!.value.duration;
+    final position = _controller!.value.position;
+    final isNearEnd = duration.inMilliseconds > 0 &&
+        (position.inMilliseconds >= duration.inMilliseconds - 500);
+
+    if (isNearEnd && _isPlaying && !_hasVideoEnded) {
       setState(() {
         _isPlaying = false;
+        _hasVideoEnded = true;
       });
       _updatePipPlaybackState(false);
+      debugPrint(
+          '[AdvancedVideoPlayer] 🏁 Video ended - Position: ${position.inSeconds}s, Duration: ${duration.inSeconds}s');
       widget.onVideoEnd?.call();
-    } else {
-      final newPlayingState = _controller!.value.isPlaying;
-      if (_isPlaying != newPlayingState) {
-        setState(() {
-          _isPlaying = newPlayingState;
-        });
-        _updatePipPlaybackState(newPlayingState);
+      return;
+    }
+
+    final newPlayingState = _controller!.value.isPlaying;
+
+    // Detectar si el video está reproduciéndose y pasó de los primeros segundos
+    if (newPlayingState && !_hasVideoStarted && position.inSeconds >= 1) {
+      _hasVideoStarted = true;
+      debugPrint(
+          '[AdvancedVideoPlayer] ✨ Video started for first time (auto-detected at ${position.inSeconds}s)');
+      widget.onVideoStart?.call();
+    }
+
+    if (_isPlaying != newPlayingState) {
+      setState(() {
+        _isPlaying = newPlayingState;
+      });
+      _updatePipPlaybackState(newPlayingState);
+
+      // Callbacks basados en el cambio de estado
+      if (newPlayingState) {
+        // El video comenzó a reproducirse
+        debugPrint('[AdvancedVideoPlayer] 🎬 Video playing');
+        widget.onVideoPlay?.call();
+
+        // Si es la primera vez, llamar onVideoStart
+        if (!_hasVideoStarted) {
+          _hasVideoStarted = true;
+          debugPrint('[AdvancedVideoPlayer] ✨ Video started for first time');
+          widget.onVideoStart?.call();
+        }
+      } else {
+        // El video se pausó
+        debugPrint('[AdvancedVideoPlayer] ⏸️ Video paused');
+        widget.onVideoPause?.call();
       }
     }
   }
@@ -513,10 +563,19 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
           _nativeController!.pause();
           _isPlaying = false;
           _updatePipPlaybackState(false);
+          // Callback de pausa (solo para reproductor nativo)
+          widget.onVideoPause?.call();
         } else {
           _nativeController!.play();
           _isPlaying = true;
           _updatePipPlaybackState(true);
+          // Callback de play (solo para reproductor nativo)
+          widget.onVideoPlay?.call();
+          // Callback de inicio (solo la primera vez y solo para reproductor nativo)
+          if (!_hasVideoStarted) {
+            _hasVideoStarted = true;
+            widget.onVideoStart?.call();
+          }
         }
       });
       _showControlsTemporarily();
@@ -592,8 +651,11 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             primaryColor: widget.primaryColor,
             secondaryColor: widget.secondaryColor,
             enablePictureInPicture: widget.enablePictureInPicture,
-            initialPosition:
-                _lastNativeVideoPosition, // Pasar posición guardada
+            initialPosition: _lastNativeVideoPosition,
+            onVideoEnd: widget.onVideoEnd,
+            onVideoStart: widget.onVideoStart,
+            onVideoPause: widget.onVideoPause,
+            onVideoPlay: widget.onVideoPlay,
           ),
           fullscreenDialog: true,
         ),
@@ -622,6 +684,10 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             enableAirPlay: widget.enableAirPlay,
             videoTitle: widget.videoTitle,
             videoDescription: widget.videoDescription,
+            onVideoEnd: widget.onVideoEnd,
+            onVideoStart: widget.onVideoStart,
+            onVideoPause: widget.onVideoPause,
+            onVideoPlay: widget.onVideoPlay,
           ),
           fullscreenDialog: true,
         ),
@@ -633,6 +699,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         setState(() {
           _isPlaying = false;
         });
+        // El callback de pausa se llamará automáticamente por el listener
       }
     }
     _showControlsTemporarily();
@@ -661,6 +728,10 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
           enableAirPlay: widget.enableAirPlay,
           videoTitle: widget.videoTitle,
           videoDescription: widget.videoDescription,
+          onVideoEnd: widget.onVideoEnd,
+          onVideoStart: widget.onVideoStart,
+          onVideoPause: widget.onVideoPause,
+          onVideoPlay: widget.onVideoPlay,
         ),
         fullscreenDialog: true,
       ),
@@ -672,6 +743,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       setState(() {
         _isPlaying = false;
       });
+      // El callback de pausa se llamará automáticamente por el listener
     }
   }
 
@@ -776,6 +848,18 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       });
       _controlsAnimationController.forward();
     }
+  }
+
+  void _startHideControlsTimer() {
+    _hideControlsTimer?.cancel();
+    _hideControlsTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _isPlaying) {
+        setState(() {
+          _showControls = false;
+        });
+        _controlsAnimationController.reverse();
+      }
+    });
   }
 
   void _onTapVideo() {
@@ -899,10 +983,73 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             ),
           ),
 
-        // Video - Solo para reproductor nativo (placeholder)
+        // Video - Solo para reproductor nativo
         if (_useNativePlayer)
-          // Para reproductor nativo: mostrar placeholder y botón para abrir fullscreen
-          _buildNativePlaceholder(),
+          // Reproductor nativo con eventos PiP
+          NativeVideoPlayer(
+            url: widget.videoSource,
+            autoplay: false,
+            onViewCreated: (controller) {
+              setState(() {
+                _nativeController = controller;
+                _isLoading = false;
+                _isPictureInPictureSupported = true;
+              });
+            },
+            onPipStarted: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] ✅ PiP iniciado desde vista normal');
+              setState(() {
+                _isInPictureInPictureMode = true;
+              });
+            },
+            onPipStopped: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] ⏹️ PiP detenido desde vista normal');
+              setState(() {
+                _isInPictureInPictureMode = false;
+              });
+            },
+            onPipRestoreToFullscreen: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] 🎬 PiP cerrado - continuando en la MISMA vista');
+
+              // NO navegar a ningún lado, el video continúa en la misma vista
+              setState(() {
+                _isInPictureInPictureMode = false;
+              });
+            },
+          ),
+
+        // Overlay para reproductor nativo con botón de play
+        if (_useNativePlayer && !_isPlaying)
+          GestureDetector(
+            onTap: _toggleFullscreen,
+            child: Container(
+              color: Colors.transparent,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: widget.primaryColor.withOpacity(0.9),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 20,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    size: 60,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
 
         // Indicador de carga cuando está inicializando (solo si no hay preview)
         if (!_useNativePlayer &&
@@ -972,154 +1119,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     );
   }
 
-  Widget _buildNativePlaceholder() {
-    return GestureDetector(
-      onTap: () {
-        _toggleFullscreen();
-      },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Fondo: Preview/thumbnail o gradiente
-          if (widget.previewImageUrl != null &&
-              widget.previewImageUrl!.isNotEmpty)
-            Image.network(
-              widget.previewImageUrl!,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [widget.primaryColor, widget.secondaryColor],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                );
-              },
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [widget.primaryColor, widget.secondaryColor],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      value: loadingProgress.expectedTotalBytes != null
-                          ? loadingProgress.cumulativeBytesLoaded /
-                              loadingProgress.expectedTotalBytes!
-                          : null,
-                      valueColor:
-                          const AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  ),
-                );
-              },
-            )
-          else
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [widget.primaryColor, widget.secondaryColor],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
-
-          // Overlay oscuro sutil para mejorar visibilidad del botón
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withOpacity(0.2),
-                  Colors.transparent,
-                  Colors.transparent,
-                  Colors.black.withOpacity(0.4),
-                ],
-              ),
-            ),
-          ),
-
-          // Botón de play centrado
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: widget.primaryColor.withOpacity(0.9),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 20,
-                    spreadRadius: 5,
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.play_arrow,
-                size: 60,
-                color: Colors.white,
-              ),
-            ),
-          ),
-
-          // Título del video (si está disponible)
-          if (widget.videoTitle != null)
-            Positioned(
-              bottom: 20,
-              left: 20,
-              right: 20,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.videoTitle!,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black,
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (widget.videoDescription != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      widget.videoDescription!,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: 14,
-                        shadows: const [
-                          Shadow(
-                            color: Colors.black,
-                            blurRadius: 10,
-                          ),
-                        ],
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildFullscreenVideo() {
     return Stack(
       fit: StackFit.expand,
@@ -1139,6 +1138,34 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
                   _isPictureInPictureSupported = true;
                 });
               }
+            },
+            onPipStarted: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] ✅ PiP iniciado - actualizando estado');
+              setState(() {
+                _isInPictureInPictureMode = true;
+              });
+            },
+            onPipStopped: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] ⏹️ PiP detenido - actualizando estado');
+              setState(() {
+                _isInPictureInPictureMode = false;
+              });
+            },
+            onPipRestoreToFullscreen: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] 🎬 PiP cerrado en fullscreen - continuando en la MISMA vista');
+
+              // NO navegar a ningún lado, solo cerrar el PiP y continuar
+              setState(() {
+                _isInPictureInPictureMode = false;
+                _showControls = true;
+              });
+
+              // Reiniciar el timer de ocultar controles
+              _hideControlsTimer?.cancel();
+              _startHideControlsTimer();
             },
           )
         else if (_isLoading ||
@@ -1791,53 +1818,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
               );
             }),
 
-            // Additional options like YouTube
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                tileColor: Colors.grey[50],
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.tv,
-                    color: Colors.blue,
-                    size: 24,
-                  ),
-                ),
-                title: const Text(
-                  'Vincular con código de TV',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                subtitle: Text(
-                  'Usar código de vinculación',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                trailing: Icon(
-                  Icons.arrow_forward_ios,
-                  size: 16,
-                  color: Colors.grey[400],
-                ),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _showTvCodeDialog();
-                },
-              ),
-            ),
             // More info option
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
@@ -1981,370 +1961,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     }
   }
 
-  void _showTvCodeDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: const Text('Vincular con código de TV'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Para conectar tu TV:',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    '1. Abre la app de Chromecast en tu TV\n'
-                    '2. Selecciona "Configurar dispositivo"\n'
-                    '3. Aparecerá un código en pantalla\n'
-                    '4. Ingresa el código aquí',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'Código de vinculación:',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 14),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _generateTvCode(),
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 2,
-                            color: Colors.blue,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'O escanea este código QR:',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(6.0),
-                      child: QrImageView(
-                        data:
-                            'Código: ${_currentPairingCode ?? _generateTvCode()}',
-                        version: QrVersions.auto,
-                        size: 108.0,
-                        backgroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _openChromecastApp(),
-                      icon: const Icon(Icons.qr_code_scanner, size: 16),
-                      label: const Text('Abrir app de Chromecast',
-                          style: TextStyle(fontSize: 13)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[600],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cerrar'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _startTvPairing();
-                },
-                child: const Text('Iniciar vinculación'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  String _generateTvCode() {
-    // Generar un código de 6 dígitos único basado en timestamp y random
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final random = (timestamp % 1000000).toInt();
-    _currentPairingCode = random.toString().padLeft(6, '0');
-    return _currentPairingCode!;
-  }
-
-  void _startTvPairing() {
-    _isPairing = true;
-    _currentPairingCode = _generateTvCode();
-
-    // Mostrar indicador de vinculación
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Vinculando con TV...'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              const Text('Esperando confirmación de la TV...'),
-              const SizedBox(height: 8),
-              Text(
-                'Código: $_currentPairingCode',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                '1. Abre la app de Chromecast en tu TV\n'
-                '2. Ingresa el código mostrado arriba\n'
-                '3. O escanea el código QR',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _cancelTvPairing();
-            },
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () => _openChromecastApp(),
-            child: const Text('Abrir Chromecast'),
-          ),
-        ],
-      ),
-    );
-
-    // Iniciar proceso de verificación real
-    _startPairingVerification();
-  }
-
-  void _openChromecastApp() async {
-    try {
-      // Intentar múltiples URLs de Chromecast
-      final List<String> urls = [
-        'https://cast.google.com/pair?code=$_currentPairingCode',
-        'https://www.google.com/chromecast/setup/',
-        'https://cast.google.com/',
-        'chromecast://pair?code=$_currentPairingCode',
-      ];
-
-      bool launched = false;
-      for (String urlString in urls) {
-        try {
-          final Uri url = Uri.parse(urlString);
-          if (await canLaunchUrl(url)) {
-            await launchUrl(url, mode: LaunchMode.externalApplication);
-            launched = true;
-            break;
-          }
-        } catch (e) {
-          continue;
-        }
-      }
-
-      if (!launched) {
-        // Fallback: mostrar instrucciones manuales
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Abrir Chromecast manualmente'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                        'No se pudo abrir automáticamente. Sigue estos pasos:'),
-                    const SizedBox(height: 12),
-                    const Text(
-                      '1. Abre la app de Chromecast en tu dispositivo\n'
-                      '2. Ve a Configuración\n'
-                      '3. Selecciona "Configurar dispositivo"\n'
-                      '4. Ingresa el código:',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue[200]!),
-                      ),
-                      child: Text(
-                        _currentPairingCode ?? 'ERROR',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cerrar'),
-                ),
-              ],
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al abrir Chromecast: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  void _startPairingVerification() {
-    // Verificar cada 2 segundos si se estableció la conexión
-    _pairingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
-      if (!_isPairing) {
-        timer.cancel();
-        return;
-      }
-
-      // Verificar si hay dispositivos conectados
-      try {
-        final devices = await _screenSharingService?.discoverDevices();
-        if (devices != null && devices.isNotEmpty) {
-          // Se encontró un dispositivo, asumir que la vinculación fue exitosa
-          timer.cancel();
-          _isPairing = false;
-
-          if (mounted) {
-            Navigator.of(context).pop(); // Cerrar diálogo de vinculación
-            _showPairingResult();
-          }
-        }
-      } catch (e) {
-        // Error en la verificación, continuar intentando
-      }
-    });
-
-    // Timeout después de 60 segundos
-    Timer(const Duration(seconds: 60), () {
-      if (_isPairing) {
-        _isPairing = false;
-        _pairingTimer?.cancel();
-
-        if (mounted) {
-          Navigator.of(context).pop(); // Cerrar diálogo de vinculación
-          _showPairingTimeout();
-        }
-      }
-    });
-  }
-
-  void _cancelTvPairing() {
-    _isPairing = false;
-    _pairingTimer?.cancel();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Vinculación cancelada'),
-        backgroundColor: Colors.orange,
-      ),
-    );
-  }
-
-  void _showPairingTimeout() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Tiempo agotado'),
-        content: const Text(
-          'No se pudo establecer la conexión con la TV. '
-          'Asegúrate de que:\n\n'
-          '• Tu TV esté conectada a la misma red Wi-Fi\n'
-          '• La app de Chromecast esté instalada en tu TV\n'
-          '• El código se haya ingresado correctamente',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cerrar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _showTvCodeDialog(); // Reintentar
-            },
-            child: const Text('Reintentar'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showPairingResult() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('¡Vinculación exitosa!'),
-        content: const Text(
-          'Tu dispositivo se ha conectado correctamente a la TV. '
-          'Ahora puedes compartir videos.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Continuar'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showInfoDialog() {
     showDialog(
       context: context,
@@ -2392,6 +2008,10 @@ class _NativeFullscreenPage extends StatefulWidget {
   final Color secondaryColor;
   final bool enablePictureInPicture;
   final double initialPosition; // Posición inicial del video en segundos
+  final VoidCallback? onVideoEnd;
+  final VoidCallback? onVideoStart;
+  final VoidCallback? onVideoPause;
+  final VoidCallback? onVideoPlay;
 
   const _NativeFullscreenPage({
     required this.url,
@@ -2399,6 +2019,10 @@ class _NativeFullscreenPage extends StatefulWidget {
     required this.secondaryColor,
     required this.enablePictureInPicture,
     this.initialPosition = 0.0, // Por defecto inicia en 0
+    this.onVideoEnd,
+    this.onVideoStart,
+    this.onVideoPause,
+    this.onVideoPlay,
   });
 
   @override
@@ -2415,6 +2039,13 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
   double _duration = 0.0;
   bool _isDragging = false;
   bool _isBuffering = true; // Inicia como true para mostrar loading inicial
+
+  // Para debounce de los botones de avanzar/retroceder
+  Timer? _seekDebounceTimer;
+  bool _isSeeking = false;
+  bool _hasVideoStarted =
+      false; // Para controlar si onVideoStart ya fue llamado
+  bool _hasVideoEnded = false; // Para controlar si onVideoEnd ya fue llamado
 
   @override
   void initState() {
@@ -2433,10 +2064,34 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
     _progressTimer?.cancel();
     _progressTimer =
         Timer.periodic(const Duration(milliseconds: 500), (timer) async {
-      if (_controller != null && !_isDragging) {
+      if (_controller != null && !_isDragging && !_isSeeking) {
         final position = await _controller!.getCurrentPosition();
         final duration = await _controller!.getDuration();
         final buffering = await _controller!.isBuffering();
+
+        // Verificar si el video terminó (con margen de tolerancia de 500ms)
+        final isNearEnd = duration > 0 && (position >= duration - 0.5);
+
+        if (isNearEnd && _isPlaying && !_hasVideoEnded) {
+          if (mounted) {
+            setState(() {
+              _isPlaying = false;
+              _hasVideoEnded = true;
+            });
+            debugPrint(
+                '[NativeFullscreenPage] 🏁 Video ended - Position: ${position.toStringAsFixed(1)}s, Duration: ${duration.toStringAsFixed(1)}s');
+            widget.onVideoEnd?.call();
+          }
+        }
+
+        // Detectar si el video está reproduciéndose y pasó de los primeros segundos
+        if (_isPlaying && !_hasVideoStarted && position >= 1.0) {
+          _hasVideoStarted = true;
+          debugPrint(
+              '[NativeFullscreenPage] ✨ Video started for first time (auto-detected at ${position.toStringAsFixed(1)}s)');
+          widget.onVideoStart?.call();
+        }
+
         if (mounted) {
           setState(() {
             _currentPosition = position;
@@ -2444,6 +2099,39 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
             _isBuffering = buffering;
           });
         }
+      }
+    });
+  }
+
+  /// Maneja el seek con debounce para permitir múltiples toques rápidos
+  void _performDebouncedSeek(double offsetSeconds) {
+    // Cancelar cualquier seek pendiente
+    _seekDebounceTimer?.cancel();
+
+    // Actualizar la posición visual inmediatamente (acumulando los offsets)
+    setState(() {
+      _currentPosition =
+          (_currentPosition + offsetSeconds).clamp(0.0, _duration);
+      _isSeeking = true;
+    });
+
+    // Programar el seek real después de 150ms de inactividad
+    _seekDebounceTimer = Timer(const Duration(milliseconds: 150), () async {
+      if (_controller != null) {
+        // Usar la posición visual acumulada (no obtener del video)
+        final targetPosition = _currentPosition;
+
+        // Ejecutar el seek a la posición visual acumulada
+        await _controller!.seek(targetPosition);
+
+        // Actualizar el estado
+        if (mounted) {
+          setState(() {
+            _isSeeking = false;
+          });
+        }
+
+        _startHideControlsTimer();
       }
     });
   }
@@ -2492,6 +2180,22 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                   _controller = controller;
                 });
 
+                // Sincronizar el estado de reproducción con el reproductor nativo
+                // Esto es especialmente importante cuando se vuelve desde PIP
+                try {
+                  final playing = await controller.isPlaying();
+                  if (mounted) {
+                    setState(() {
+                      _isPlaying = playing;
+                    });
+                    debugPrint(
+                        '[NativeFullscreenPage] 🎵 Estado de reproducción sincronizado: $_isPlaying');
+                  }
+                } catch (e) {
+                  debugPrint(
+                      '[NativeFullscreenPage] ⚠️ Error al sincronizar estado de reproducción: $e');
+                }
+
                 // Si hay una posición inicial, hacer seek a esa posición
                 if (widget.initialPosition > 0) {
                   await Future.delayed(const Duration(
@@ -2501,6 +2205,49 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                     _currentPosition = widget.initialPosition;
                     _isBuffering = true; // Mostrar loading mientras busca
                   });
+                }
+              },
+              onPipStarted: () {
+                debugPrint('[NativeFullscreenPage] ✅ PiP iniciado');
+              },
+              onPipStopped: () async {
+                debugPrint('[NativeFullscreenPage] ⏹️ PiP detenido');
+                // Sincronizar el estado de reproducción después de cerrar PIP
+                if (_controller != null) {
+                  try {
+                    final playing = await _controller!.isPlaying();
+                    if (mounted) {
+                      setState(() {
+                        _isPlaying = playing;
+                      });
+                      debugPrint(
+                          '[NativeFullscreenPage] 🎵 Estado sincronizado después de PIP: $_isPlaying');
+                    }
+                  } catch (e) {
+                    debugPrint(
+                        '[NativeFullscreenPage] ⚠️ Error al sincronizar después de PIP: $e');
+                  }
+                }
+              },
+              onPipRestoreToFullscreen: () async {
+                debugPrint(
+                    '[NativeFullscreenPage] 🎬 Restaurando a fullscreen desde PiP');
+                // Ya estamos en fullscreen, no necesitamos navegar
+                // Pero sí necesitamos sincronizar el estado de reproducción
+                if (_controller != null) {
+                  try {
+                    final playing = await _controller!.isPlaying();
+                    if (mounted) {
+                      setState(() {
+                        _isPlaying = playing;
+                      });
+                      debugPrint(
+                          '[NativeFullscreenPage] 🎵 Estado sincronizado al restaurar desde PIP: $_isPlaying');
+                    }
+                  } catch (e) {
+                    debugPrint(
+                        '[NativeFullscreenPage] ⚠️ Error al sincronizar al restaurar desde PIP: $e');
+                  }
                 }
               },
             ),
@@ -2641,24 +2388,9 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                           // Retroceder 10 segundos
                           _buildCircularButton(
                             icon: Icons.replay_10,
-                            onPressed: () async {
+                            onPressed: () {
                               if (_controller != null) {
-                                setState(() =>
-                                    _isBuffering = true); // Mostrar loading
-
-                                // Obtener posición actual y retroceder 10 segundos
-                                final currentPos =
-                                    await _controller!.getCurrentPosition();
-                                final newPos =
-                                    (currentPos - 10).clamp(0.0, _duration);
-                                await _controller!.seek(newPos);
-
-                                setState(() => _currentPosition = newPos);
-                                _startHideControlsTimer();
-
-                                // Dar tiempo para que el player actualice su estado
-                                await Future.delayed(
-                                    const Duration(milliseconds: 300));
+                                _performDebouncedSeek(-10.0);
                               }
                             },
                           ),
@@ -2667,12 +2399,37 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                           _buildCircularButton(
                             icon: _isPlaying ? Icons.pause : Icons.play_arrow,
                             size: 70,
-                            onPressed: () {
+                            onPressed: () async {
                               if (_controller != null) {
+                                // Primero sincronizar con el estado real del reproductor
+                                try {
+                                  final actuallyPlaying =
+                                      await _controller!.isPlaying();
+                                  // Actualizar el estado local con el estado real
+                                  if (mounted) {
+                                    setState(() {
+                                      _isPlaying = actuallyPlaying;
+                                    });
+                                  }
+                                } catch (e) {
+                                  debugPrint(
+                                      '[NativeFullscreenPage] ⚠️ Error al sincronizar estado antes de toggle: $e');
+                                }
+
+                                // Ahora hacer el toggle con el estado sincronizado
                                 if (_isPlaying) {
                                   _controller!.pause();
+                                  // Callback de pausa (solo para reproductor nativo iOS)
+                                  widget.onVideoPause?.call();
                                 } else {
                                   _controller!.play();
+                                  // Callback de play (solo para reproductor nativo iOS)
+                                  widget.onVideoPlay?.call();
+                                  // Callback de inicio (solo la primera vez y solo para reproductor nativo iOS)
+                                  if (!_hasVideoStarted) {
+                                    _hasVideoStarted = true;
+                                    widget.onVideoStart?.call();
+                                  }
                                 }
                                 setState(() {
                                   _isPlaying = !_isPlaying;
@@ -2685,24 +2442,9 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                           // Avanzar 10 segundos
                           _buildCircularButton(
                             icon: Icons.forward_10,
-                            onPressed: () async {
+                            onPressed: () {
                               if (_controller != null) {
-                                setState(() =>
-                                    _isBuffering = true); // Mostrar loading
-
-                                // Obtener posición actual y avanzar 10 segundos
-                                final currentPos =
-                                    await _controller!.getCurrentPosition();
-                                final newPos =
-                                    (currentPos + 10).clamp(0.0, _duration);
-                                await _controller!.seek(newPos);
-
-                                setState(() => _currentPosition = newPos);
-                                _startHideControlsTimer();
-
-                                // Dar tiempo para que el player actualice su estado
-                                await Future.delayed(
-                                    const Duration(milliseconds: 300));
+                                _performDebouncedSeek(10.0);
                               }
                             },
                           ),
@@ -2845,6 +2587,7 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
   void dispose() {
     _hideControlsTimer?.cancel();
     _progressTimer?.cancel();
+    _seekDebounceTimer?.cancel();
     _controller?.dispose();
     // Restaurar orientación
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

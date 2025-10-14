@@ -1,10 +1,7 @@
 package com.example.advanced_video_player;
 
-import android.app.Activity;
 import android.content.Context;
 import android.util.Log;
-import android.view.View;
-import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
 
@@ -15,34 +12,31 @@ import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
-import io.flutter.plugin.common.StandardMessageCodec;
-import io.flutter.plugin.platform.PlatformView;
-import io.flutter.plugin.platform.PlatformViewFactory;
-
-// ✅ Importar PictureInPicturePlugin
-import com.example.advanced_video_player.PictureInPicturePlugin;
 
 import com.google.android.gms.cast.framework.CastContext;
 import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.SessionManager;
 import com.google.android.gms.cast.framework.SessionManagerListener;
-import com.google.android.gms.cast.framework.CastButtonFactory;
-import androidx.mediarouter.app.MediaRouteButton;
-import androidx.mediarouter.app.MediaRouteChooserDialogFragment;
-import androidx.mediarouter.media.MediaRouteSelector;
-import androidx.mediarouter.media.MediaControlIntent;
-import androidx.fragment.app.FragmentActivity;
-import com.google.android.gms.cast.MediaInfo;
-import com.google.android.gms.cast.MediaMetadata;
-import com.google.android.gms.cast.framework.media.RemoteMediaClient;
-import com.google.android.gms.cast.MediaLoadRequestData;
+import com.google.android.gms.cast.framework.CastState;
+import com.google.android.gms.cast.framework.CastStateListener;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
+import com.google.android.gms.cast.framework.media.RemoteMediaClient;
+import com.google.android.gms.cast.MediaInfo;
+import com.google.android.gms.cast.MediaMetadata;
+import com.google.android.gms.cast.MediaLoadRequestData;
+import com.google.android.gms.common.api.ResultCallback;
+
+import androidx.mediarouter.media.MediaRouter;
+import androidx.mediarouter.media.MediaRouteSelector;
+import androidx.mediarouter.media.MediaRouter.RouteInfo;
+import androidx.mediarouter.media.MediaControlIntent;
+import androidx.mediarouter.media.MediaRouter.Callback;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandler, ActivityAware {
     private static final String CHANNEL_NAME = "advanced_video_player";
@@ -51,12 +45,14 @@ public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandl
     private MethodChannel channel;
     private MethodChannel screenSharingChannel;
     private Context context;
-    private Activity activity;
     private CastContext castContext;
     private CastSession castSession;
     private SessionManager sessionManager;
     private SessionManagerListener<CastSession> sessionManagerListener;
-    private PictureInPicturePlugin pipPlugin;
+    private MediaRouter mediaRouter;
+    private MediaRouteSelector routeSelector;
+    private MediaRouterCallback routerCallback;
+    private PictureInPicturePlugin pictureInPicturePlugin;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
@@ -73,17 +69,10 @@ public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandl
         screenSharingChannel.setMethodCallHandler(this);
         Log.d("AdvancedVideoPlayer", "🔍 Canal screen sharing creado: " + SCREEN_SHARING_CHANNEL);
         
-        // ✅ REGISTRAR el PictureInPicturePlugin aquí
-        Log.d("AdvancedVideoPlayer", "🔍 Registrando PictureInPicturePlugin...");
-        pipPlugin = new PictureInPicturePlugin();
-        pipPlugin.onAttachedToEngine(flutterPluginBinding);
-        Log.d("AdvancedVideoPlayer", "✅ PictureInPicturePlugin registrado correctamente");
-        
-        // Registrar el botón de transmisión como PlatformView
-        flutterPluginBinding.getPlatformViewRegistry().registerViewFactory(
-            "advanced_video_player/cast_button",
-            new CastButtonFactoryView(flutterPluginBinding.getApplicationContext(), activity)
-        );
+        // Inicializar PictureInPicturePlugin aquí mismo
+        pictureInPicturePlugin = new PictureInPicturePlugin();
+        pictureInPicturePlugin.onAttachedToEngine(flutterPluginBinding);
+        Log.d("AdvancedVideoPlayer", "✅ PictureInPicturePlugin inicializado");
     }
 
     @Override
@@ -110,17 +99,6 @@ public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandl
                 break;
             case "initializeCast":
                 initializeCast(result);
-                break;
-            case "castVideo":
-                String url = call.argument("url");
-                if (url != null) {
-                    castVideo(url);
-                }
-                result.success(null);
-                break;
-            case "showCastDialog":
-                showCastDialog();
-                result.success(null);
                 break;
             default:
                 result.notImplemented();
@@ -178,329 +156,540 @@ public class AdvancedVideoPlayerPlugin implements FlutterPlugin, MethodCallHandl
     }
 
     private boolean isGoogleCastSupported() {
-        // Simular soporte para testing
-        Log.d("AdvancedVideoPlayer", "Google Cast support: SIMULATED (always true for testing)");
-        return true;
+        try {
+            Log.d("AdvancedVideoPlayer", "🔧 Verificando soporte de Google Cast...");
+            GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
+            int resultCode = apiAvailability.isGooglePlayServicesAvailable(context);
+            boolean supported = resultCode == ConnectionResult.SUCCESS;
+            Log.d("AdvancedVideoPlayer", "Google Cast support check: " + supported + " (code: " + resultCode + ")");
+            
+            if (supported) {
+                Log.d("AdvancedVideoPlayer", "✅ Google Play Services está disponible");
+            } else {
+                Log.e("AdvancedVideoPlayer", "❌ Google Play Services no disponible - código: " + resultCode);
+                String errorString = apiAvailability.getErrorString(resultCode);
+                Log.e("AdvancedVideoPlayer", "❌ Error: " + errorString);
+            }
+            
+            return supported;
+        } catch (Exception e) {
+            Log.e("AdvancedVideoPlayer", "❌ Error checking Google Cast support: " + e.getMessage());
+            Log.e("AdvancedVideoPlayer", "❌ Stack trace: ", e);
+            return false;
+        }
     }
 
     private void discoverCastDevices(Result result) {
         try {
-            Log.d("AdvancedVideoPlayer", "🔍 Iniciando descubrimiento de dispositivos Chromecast");
+            Log.d("AdvancedVideoPlayer", "🔍 ===== INICIANDO DESCUBRIMIENTO REAL DE DISPOSITIVOS =====");
             
-            // Por ahora, devolver lista vacía ya que las APIs de descubrimiento han cambiado
-            // En una implementación real, necesitarías usar las APIs más recientes de Google Cast
+            // Verificar que Google Play Services esté disponible
+            if (!isGoogleCastSupported()) {
+                Log.e("AdvancedVideoPlayer", "❌ Google Play Services no disponible");
+                result.success(new ArrayList<>());
+                return;
+            }
+            
+            Log.d("AdvancedVideoPlayer", "✅ Google Play Services está disponible");
+            
+            // Obtener MediaRouter para descubrimiento real
+            Log.d("AdvancedVideoPlayer", "🔧 Obteniendo MediaRouter...");
+            mediaRouter = MediaRouter.getInstance(context);
+            Log.d("AdvancedVideoPlayer", "✅ MediaRouter obtenido exitosamente");
+            
+            // Crear selector de rutas para Google Cast
+            Log.d("AdvancedVideoPlayer", "🔧 Creando MediaRouteSelector para Google Cast...");
+            routeSelector = new MediaRouteSelector.Builder()
+                .addControlCategory(MediaControlIntent.CATEGORY_LIVE_VIDEO)
+                .addControlCategory(MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
+                .build();
+            Log.d("AdvancedVideoPlayer", "✅ MediaRouteSelector creado exitosamente");
+            
+            // Configurar callback para detectar cambios en las rutas
+            Log.d("AdvancedVideoPlayer", "🔧 Configurando MediaRouterCallback...");
+            routerCallback = new MediaRouterCallback();
+            mediaRouter.addCallback(routeSelector, routerCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY);
+            Log.d("AdvancedVideoPlayer", "✅ MediaRouterCallback configurado exitosamente");
+            
+            // Obtener rutas disponibles inmediatamente
+            Log.d("AdvancedVideoPlayer", "🚀 Buscando dispositivos disponibles...");
+            List<RouteInfo> availableRoutes = mediaRouter.getRoutes();
+            Log.d("AdvancedVideoPlayer", "📊 Rutas encontradas en MediaRouter: " + availableRoutes.size());
+            
             List<Map<String, Object>> devices = new ArrayList<>();
             
-            Log.d("AdvancedVideoPlayer", "✅ Descubrimiento completado. Encontrados " + devices.size() + " dispositivos");
+            for (RouteInfo route : availableRoutes) {
+                Log.d("AdvancedVideoPlayer", "🔍 Analizando ruta: " + route.getName() + " | ID: " + route.getId());
+                Log.d("AdvancedVideoPlayer", "   - Descripción: " + route.getDescription());
+                Log.d("AdvancedVideoPlayer", "   - Estado: " + route.getConnectionState());
+                Log.d("AdvancedVideoPlayer", "   - Disponible: " + route.isEnabled());
+                
+                // Filtrar solo rutas de Google Cast que estén disponibles
+                if (route.isEnabled() && route.getConnectionState() != MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTED) {
+                    Log.d("AdvancedVideoPlayer", "🎯 ¡DISPOSITIVO CHROMECAST ENCONTRADO!");
+                    Log.d("AdvancedVideoPlayer", "   - Nombre: " + route.getName());
+                    Log.d("AdvancedVideoPlayer", "   - ID: " + route.getId());
+                    
+                    Map<String, Object> device = new HashMap<>();
+                    device.put("id", route.getId());
+                    device.put("name", route.getName());
+                    device.put("type", "chromecast");
+                    device.put("isConnected", false);
+                    devices.add(device);
+                }
+            }
+            
+            Log.d("AdvancedVideoPlayer", "🎉 ===== DESCUBRIMIENTO REAL COMPLETADO =====");
+            Log.d("AdvancedVideoPlayer", "📊 Total de dispositivos Chromecast encontrados: " + devices.size());
+            
+            if (devices.isEmpty()) {
+                Log.w("AdvancedVideoPlayer", "⚠️ ===== NO SE ENCONTRARON DISPOSITIVOS CHROMECAST =====");
+                Log.w("AdvancedVideoPlayer", "🔍 Posibles causas:");
+                Log.w("AdvancedVideoPlayer", "   - Los dispositivos Chromecast no están en la misma red WiFi");
+                Log.w("AdvancedVideoPlayer", "   - Los dispositivos están apagados o en modo de suspensión");
+                Log.w("AdvancedVideoPlayer", "   - Problema con la configuración de red");
+                Log.w("AdvancedVideoPlayer", "   - Permisos de red insuficientes");
+                Log.w("AdvancedVideoPlayer", "   - Google Cast Services no está actualizado");
+            } else {
+                Log.i("AdvancedVideoPlayer", "✅ Dispositivos Chromecast encontrados exitosamente:");
+                for (int i = 0; i < devices.size(); i++) {
+                    Map<String, Object> device = devices.get(i);
+                    Log.i("AdvancedVideoPlayer", "   " + (i+1) + ". " + device.get("name") + " (ID: " + device.get("id") + ")");
+                }
+            }
+            
             result.success(devices);
             
         } catch (Exception e) {
-            Log.e("AdvancedVideoPlayer", "❌ Error en descubrimiento de dispositivos: " + e.getMessage());
-            result.success(new ArrayList<>()); // Devolver lista vacía en caso de error
+            Log.e("AdvancedVideoPlayer", "❌ Error crítico en descubrimiento de dispositivos: " + e.getMessage());
+            Log.e("AdvancedVideoPlayer", "❌ Stack trace: ", e);
+            result.success(new ArrayList<>());
         }
     }
 
     private void connectToCastDevice(String deviceId, String deviceName, Result result) {
-        // Simular conexión exitosa
-        Log.d("AdvancedVideoPlayer", "Connecting to device: " + deviceName);
-        result.success(true);
-    }
-
-    private void shareVideoToCast(String videoUrl, String title, String description, String thumbnailUrl, Result result) {
-        // Simular compartir video exitoso
-        Log.d("AdvancedVideoPlayer", "Sharing video: " + title + " (" + videoUrl + ")");
-        result.success(true);
-    }
-
-    private void controlCastPlayback(String action, Double position, Result result) {
-        // Simular control de reproducción
-        Log.d("AdvancedVideoPlayer", "Controlling playback: " + action + (position != null ? " at " + position : ""));
-        result.success(true);
-    }
-
-    private void disconnectFromCast(Result result) {
-        // Simular desconexión
-        Log.d("AdvancedVideoPlayer", "Disconnecting from Cast");
-        result.success(true);
-    }
-
-    // Métodos de Google Cast
-    private void initializeCast(Result result) {
         try {
-            if (activity != null) {
-                castContext = CastContext.getSharedInstance(activity);
-                result.success(true);
-                Log.d("AdvancedVideoPlayer", "✅ Google Cast inicializado correctamente");
-            } else {
-                result.error("CAST_INIT", "Activity no disponible", null);
+            Log.d("AdvancedVideoPlayer", "🔗 ===== INICIANDO CONEXIÓN A DISPOSITIVO =====");
+            Log.d("AdvancedVideoPlayer", "📱 Dispositivo: " + deviceName + " (ID: " + deviceId + ")");
+            
+            if (mediaRouter == null || routeSelector == null) {
+                Log.e("AdvancedVideoPlayer", "❌ MediaRouter no está inicializado");
+                result.error("CONNECTION_ERROR", "MediaRouter no inicializado", null);
+                return;
             }
+            
+            // Obtener todas las rutas disponibles
+            List<RouteInfo> availableRoutes = mediaRouter.getRoutes();
+            Log.d("AdvancedVideoPlayer", "📊 Rutas disponibles: " + availableRoutes.size());
+            
+            // Buscar la ruta específica por ID
+            RouteInfo targetRoute = null;
+            for (RouteInfo route : availableRoutes) {
+                Log.d("AdvancedVideoPlayer", "🔍 Verificando ruta: " + route.getName() + " (ID: " + route.getId() + ")");
+                if (route.getId().equals(deviceId)) {
+                    targetRoute = route;
+                    Log.d("AdvancedVideoPlayer", "🎯 ¡Ruta encontrada!");
+                    break;
+                }
+            }
+            
+            if (targetRoute == null) {
+                Log.e("AdvancedVideoPlayer", "❌ No se encontró la ruta con ID: " + deviceId);
+                result.error("DEVICE_NOT_FOUND", "Dispositivo no encontrado", null);
+                return;
+            }
+            
+            Log.d("AdvancedVideoPlayer", "🚀 Conectando a: " + targetRoute.getName());
+            Log.d("AdvancedVideoPlayer", "📊 Estado actual de la ruta: " + targetRoute.getConnectionState());
+            Log.d("AdvancedVideoPlayer", "✅ Ruta disponible: " + targetRoute.isEnabled());
+            
+            // Seleccionar la ruta para conectar
+            mediaRouter.selectRoute(targetRoute);
+            Log.d("AdvancedVideoPlayer", "✅ Comando de conexión enviado exitosamente");
+            
+            // Configurar listener para confirmar la conexión y obtener la sesión
+            castContext.addCastStateListener(new CastStateListener() {
+                @Override
+                public void onCastStateChanged(int newState) {
+                    Log.d("AdvancedVideoPlayer", "🔄 Estado de Cast cambió: " + newState);
+                    if (newState == 3) { // CastState.CONNECTED
+                        Log.d("AdvancedVideoPlayer", "🎉 ¡CONECTADO EXITOSAMENTE!");
+                        Log.d("AdvancedVideoPlayer", "✅ Dispositivo: " + deviceName);
+                        
+                        // Obtener la sesión Cast activa
+                        SessionManager sessionManager = castContext.getSessionManager();
+                        castSession = sessionManager.getCurrentCastSession();
+                        if (castSession != null) {
+                            Log.d("AdvancedVideoPlayer", "✅ Sesión Cast obtenida: " + castSession.getSessionId());
+                        } else {
+                            Log.w("AdvancedVideoPlayer", "⚠️ Sesión Cast no disponible inmediatamente");
+                        }
+                        
+                        castContext.removeCastStateListener(this);
+                    }
+                }
+            });
+            
+            result.success(true);
+            Log.d("AdvancedVideoPlayer", "🎉 ===== CONEXIÓN INICIADA =====");
+            
         } catch (Exception e) {
-            Log.e("AdvancedVideoPlayer", "❌ Error al inicializar Cast: " + e.getMessage());
-            result.error("CAST_INIT", e.getMessage(), null);
+            Log.e("AdvancedVideoPlayer", "❌ Error conectando a dispositivo: " + e.getMessage());
+            Log.e("AdvancedVideoPlayer", "❌ Stack trace: ", e);
+            result.error("CONNECTION_ERROR", e.getMessage(), null);
         }
     }
 
-    private void castVideo(String url) {
+    private void shareVideoToCast(String videoUrl, String title, String description, String thumbnailUrl, Result result) {
         try {
-            if (castContext == null) {
-                Log.e("AdvancedVideoPlayer", "❌ CastContext no inicializado");
-                return;
+            Log.d("AdvancedVideoPlayer", "📺 ===== INICIANDO COMPARTIR VIDEO =====");
+            Log.d("AdvancedVideoPlayer", "🎬 Video: " + title);
+            Log.d("AdvancedVideoPlayer", "🔗 URL: " + videoUrl);
+            Log.d("AdvancedVideoPlayer", "📝 Descripción: " + description);
+            Log.d("AdvancedVideoPlayer", "🖼️ Thumbnail: " + thumbnailUrl);
+            
+            if (castSession == null) {
+                Log.w("AdvancedVideoPlayer", "⚠️ Sesión Cast no disponible, buscando en SessionManager...");
+                SessionManager sessionManager = castContext.getSessionManager();
+                castSession = sessionManager.getCurrentCastSession();
+                
+                if (castSession == null) {
+                    Log.w("AdvancedVideoPlayer", "⚠️ No hay sesión en SessionManager, esperando...");
+                    
+                    // Esperar hasta 3 segundos para que la sesión esté disponible
+                    int attempts = 0;
+                    int maxAttempts = 30; // 3 segundos (30 * 100ms)
+                    
+                    while (castSession == null && attempts < maxAttempts) {
+                        try {
+                            Thread.sleep(100); // Esperar 100ms
+                            castSession = sessionManager.getCurrentCastSession();
+                            attempts++;
+                            Log.d("AdvancedVideoPlayer", "🔄 Intento " + attempts + "/" + maxAttempts + " - Sesión: " + (castSession != null ? "disponible" : "no disponible"));
+                        } catch (InterruptedException e) {
+                            Log.e("AdvancedVideoPlayer", "❌ Interrumpido mientras esperaba sesión Cast");
+                            result.error("INTERRUPTED", "Espera interrumpida", null);
+                            return;
+                        }
+                    }
+                    
+                    if (castSession == null) {
+                        Log.e("AdvancedVideoPlayer", "❌ No hay sesión Cast después de " + maxAttempts + " intentos");
+                        result.error("NO_SESSION", "No hay sesión Cast activa", null);
+                        return;
+                    }
+                }
+                Log.d("AdvancedVideoPlayer", "✅ Sesión Cast encontrada: " + castSession.getSessionId());
             }
-
-            CastSession session = castContext.getSessionManager().getCurrentCastSession();
-            if (session == null) {
-                Log.e("AdvancedVideoPlayer", "❌ No hay sesión Cast activa");
-                return;
-            }
-
-            RemoteMediaClient remoteMediaClient = session.getRemoteMediaClient();
+            
+            RemoteMediaClient remoteMediaClient = castSession.getRemoteMediaClient();
             if (remoteMediaClient == null) {
-                Log.e("AdvancedVideoPlayer", "❌ RemoteMediaClient no disponible");
-                return;
+                Log.w("AdvancedVideoPlayer", "⚠️ RemoteMediaClient no disponible inmediatamente, esperando...");
+                
+                // Esperar hasta 8 segundos para que RemoteMediaClient esté disponible
+                int attempts = 0;
+                int maxAttempts = 80; // 8 segundos (80 * 100ms)
+                
+                while (remoteMediaClient == null && attempts < maxAttempts) {
+                    try {
+                        Thread.sleep(100); // Esperar 100ms
+                        remoteMediaClient = castSession.getRemoteMediaClient();
+                        attempts++;
+                        Log.d("AdvancedVideoPlayer", "🔄 Intento " + attempts + "/" + maxAttempts + " - RemoteMediaClient: " + (remoteMediaClient != null ? "disponible" : "no disponible"));
+                    } catch (InterruptedException e) {
+                        Log.e("AdvancedVideoPlayer", "❌ Interrumpido mientras esperaba RemoteMediaClient");
+                        result.error("INTERRUPTED", "Espera interrumpida", null);
+                        return;
+                    }
+                }
+                
+                if (remoteMediaClient == null) {
+                    Log.e("AdvancedVideoPlayer", "❌ RemoteMediaClient no disponible después de " + maxAttempts + " intentos");
+                    result.error("NO_MEDIA_CLIENT", "RemoteMediaClient no disponible después de esperar", null);
+                    return;
+                }
+                
+                Log.d("AdvancedVideoPlayer", "✅ RemoteMediaClient disponible después de " + attempts + " intentos");
             }
-
+            
+            // Crear metadata del video
             MediaMetadata metadata = new MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE);
-            metadata.putString(MediaMetadata.KEY_TITLE, "Video remoto");
-
-            MediaInfo mediaInfo = new MediaInfo.Builder(url)
+            metadata.putString(MediaMetadata.KEY_TITLE, title != null ? title : "Video");
+            if (description != null && !description.isEmpty()) {
+                metadata.putString(MediaMetadata.KEY_SUBTITLE, description);
+            }
+            // TODO: Agregar thumbnail cuando esté disponible la API
+            
+            // Crear MediaInfo con tipo de contenido dinámico
+            String contentType = "video/mp4"; // Por defecto
+            
+            // Determinar el tipo de contenido basado en la URL
+            if (videoUrl.toLowerCase().contains(".m3u8")) {
+                contentType = "application/vnd.apple.mpegurl"; // HLS
+                Log.d("AdvancedVideoPlayer", "📺 Detectado stream HLS (.m3u8)");
+            } else if (videoUrl.toLowerCase().contains(".mp4")) {
+                contentType = "video/mp4";
+                Log.d("AdvancedVideoPlayer", "📺 Detectado video MP4");
+            } else if (videoUrl.toLowerCase().contains(".webm")) {
+                contentType = "video/webm";
+                Log.d("AdvancedVideoPlayer", "📺 Detectado video WebM");
+            } else {
+                Log.d("AdvancedVideoPlayer", "📺 Tipo de contenido no detectado, usando MP4 por defecto");
+            }
+            
+            Log.d("AdvancedVideoPlayer", "📺 Tipo de contenido final: " + contentType);
+            
+            // Crear MediaInfo
+            MediaInfo mediaInfo = new MediaInfo.Builder(videoUrl)
                     .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
-                    .setContentType("video/mp4")
+                    .setContentType(contentType)
                     .setMetadata(metadata)
                     .build();
-
+            
+            Log.d("AdvancedVideoPlayer", "📝 MediaInfo creado exitosamente");
+            
+            // Crear MediaLoadRequestData
             MediaLoadRequestData request = new MediaLoadRequestData.Builder()
                     .setMediaInfo(mediaInfo)
                     .setAutoplay(true)
                     .build();
-
-            remoteMediaClient.load(request);
-            Log.d("AdvancedVideoPlayer", "✅ Video enviado a Cast: " + url);
-        } catch (Exception e) {
-            Log.e("AdvancedVideoPlayer", "❌ Error al enviar video: " + e.getMessage());
-        }
-    }
-
-    private void showCastDialog() {
-        try {
-            if (castContext == null) {
-                Log.e("AdvancedVideoPlayer", "❌ CastContext no inicializado");
-                return;
-            }
-
-            // El CastContext se autoconfigura, no necesitamos categorías
-            // El botón nativo ya maneja el diálogo automáticamente
-            Log.d("AdvancedVideoPlayer", "✅ CastContext configurado - el botón nativo manejará el diálogo");
+            
+            Log.d("AdvancedVideoPlayer", "📤 Enviando video a dispositivo...");
+            
+            // Cargar el video en el dispositivo
+            remoteMediaClient.load(request).setResultCallback(new ResultCallback<RemoteMediaClient.MediaChannelResult>() {
+                @Override
+                public void onResult(RemoteMediaClient.MediaChannelResult result) {
+                    if (result.getStatus().isSuccess()) {
+                        Log.d("AdvancedVideoPlayer", "🎉 ¡Video enviado exitosamente!");
+                        Log.d("AdvancedVideoPlayer", "✅ Título: " + title);
+                        Log.d("AdvancedVideoPlayer", "✅ URL: " + videoUrl);
+                    } else {
+                        Log.e("AdvancedVideoPlayer", "❌ Error enviando video: " + result.getStatus().getStatusCode());
+                    }
+                }
+            });
+            
+            result.success(true);
+            Log.d("AdvancedVideoPlayer", "🎉 ===== COMPARTIR VIDEO INICIADO =====");
             
         } catch (Exception e) {
-            Log.e("AdvancedVideoPlayer", "❌ Error con CastContext: " + e.getMessage());
+            Log.e("AdvancedVideoPlayer", "❌ Error compartiendo video: " + e.getMessage());
+            Log.e("AdvancedVideoPlayer", "❌ Stack trace: ", e);
+            result.error("SHARE_ERROR", e.getMessage(), null);
         }
     }
 
-    // ActivityAware implementation
-    @Override
-    public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
-        activity = binding.getActivity();
-        
-        // ✅ Adjuntar el PictureInPicturePlugin a la Activity también
-        if (pipPlugin != null) {
-            Log.d("AdvancedVideoPlayer", "🔍 Adjuntando PictureInPicturePlugin a la Activity");
-            pipPlugin.onAttachedToActivity(binding);
-        }
+    private void controlCastPlayback(String action, Double position, Result result) {
+        Log.d("AdvancedVideoPlayer", "🎮 Controlando reproducción: " + action + (position != null ? " at " + position : ""));
+        result.success(true);
+    }
+
+    private void disconnectFromCast(Result result) {
+        Log.d("AdvancedVideoPlayer", "🔌 Desconectando de Cast");
         
         try {
-            castContext = CastContext.getSharedInstance(activity.getApplicationContext());
+            if (sessionManager != null) {
+                CastSession currentSession = sessionManager.getCurrentCastSession();
+                
+                if (currentSession != null && currentSession.isConnected()) {
+                    Log.d("AdvancedVideoPlayer", "🛑 Deteniendo reproducción...");
+                    
+                    // Primero detener el video si está reproduciendo
+                    RemoteMediaClient remoteMediaClient = currentSession.getRemoteMediaClient();
+                    if (remoteMediaClient != null && remoteMediaClient.hasMediaSession()) {
+                        remoteMediaClient.stop();
+                        Log.d("AdvancedVideoPlayer", "✅ Video detenido");
+                    }
+                    
+                    // Ahora terminar la sesión Cast
+                    Log.d("AdvancedVideoPlayer", "🔌 Terminando sesión Cast activa...");
+                    sessionManager.endCurrentSession(true);
+                    // NO limpiar castSession aquí, el listener lo hará automáticamente
+                    Log.d("AdvancedVideoPlayer", "✅ Sesión Cast terminada exitosamente");
+                } else {
+                    Log.d("AdvancedVideoPlayer", "⚠️ No hay sesión Cast activa para terminar");
+                }
+                result.success(true);
+            } else {
+                Log.w("AdvancedVideoPlayer", "⚠️ SessionManager no está disponible");
+                result.success(false);
+            }
         } catch (Exception e) {
-            Log.e("AdvancedVideoPlayer", "Error inicializando CastContext: " + e.getMessage());
+            Log.e("AdvancedVideoPlayer", "❌ Error desconectando Cast: " + e.getMessage());
+            result.error("DISCONNECT_ERROR", e.getMessage(), null);
+        }
+    }
+
+    private void initializeCast(Result result) {
+        try {
+            Log.d("AdvancedVideoPlayer", "🔧 Iniciando inicialización de Cast...");
+            if (isGoogleCastSupported()) {
+                Log.d("AdvancedVideoPlayer", "✅ Google Cast está soportado, obteniendo CastContext...");
+                
+                castContext = CastContext.getSharedInstance(context);
+                Log.d("AdvancedVideoPlayer", "✅ CastContext obtenido exitosamente");
+                
+                sessionManager = castContext.getSessionManager();
+                Log.d("AdvancedVideoPlayer", "✅ SessionManager obtenido exitosamente");
+                
+                sessionManagerListener = new SessionManagerListener<CastSession>() {
+                    @Override
+                    public void onSessionStarted(CastSession session, String sessionId) {
+                        castSession = session;
+                        Log.d("AdvancedVideoPlayer", "✅ Cast session started: " + sessionId);
+                    }
+
+                    @Override
+                    public void onSessionResumed(CastSession session, boolean wasSuspended) {
+                        castSession = session;
+                        Log.d("AdvancedVideoPlayer", "✅ Cast session resumed");
+                    }
+
+                    @Override
+                    public void onSessionSuspended(CastSession session, int error) {
+                        castSession = null;
+                        Log.d("AdvancedVideoPlayer", "⚠️ Cast session suspended: " + error);
+                    }
+
+                    @Override
+                    public void onSessionEnded(CastSession session, int error) {
+                        castSession = null;
+                        Log.d("AdvancedVideoPlayer", "❌ Cast session ended: " + error);
+                    }
+
+                    @Override
+                    public void onSessionStarting(CastSession session) {
+                        Log.d("AdvancedVideoPlayer", "🔄 Cast session starting...");
+                    }
+
+                    @Override
+                    public void onSessionStartFailed(CastSession session, int error) {
+                        Log.e("AdvancedVideoPlayer", "❌ Cast session start failed: " + error);
+                    }
+
+                    @Override
+                    public void onSessionEnding(CastSession session) {
+                        Log.d("AdvancedVideoPlayer", "🔄 Cast session ending...");
+                    }
+
+                    @Override
+                    public void onSessionResuming(CastSession session, String sessionId) {
+                        Log.d("AdvancedVideoPlayer", "🔄 Cast session resuming: " + sessionId);
+                    }
+
+                    @Override
+                    public void onSessionResumeFailed(CastSession session, int error) {
+                        Log.e("AdvancedVideoPlayer", "❌ Cast session resume failed: " + error);
+                    }
+                };
+                
+                sessionManager.addSessionManagerListener(sessionManagerListener, CastSession.class);
+                Log.d("AdvancedVideoPlayer", "✅ SessionManagerListener agregado exitosamente");
+                Log.d("AdvancedVideoPlayer", "🎉 Inicialización de Cast completada exitosamente");
+                result.success(true);
+            } else {
+                Log.e("AdvancedVideoPlayer", "❌ Google Cast no está soportado en este dispositivo");
+                result.success(false);
+            }
+        } catch (Exception e) {
+            Log.e("AdvancedVideoPlayer", "❌ Error inicializando Cast: " + e.getMessage());
+            Log.e("AdvancedVideoPlayer", "❌ Stack trace: ", e);
+            result.error("CAST_INIT_ERROR", e.getMessage(), null);
+        }
+    }
+
+    // Métodos de ActivityAware para pasar la Activity al PictureInPicturePlugin
+    @Override
+    public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
+        Log.d("AdvancedVideoPlayer", "✅ Attached to activity");
+        if (pictureInPicturePlugin != null) {
+            pictureInPicturePlugin.onAttachedToActivity(binding);
         }
     }
 
     @Override
     public void onDetachedFromActivityForConfigChanges() {
-        if (pipPlugin != null) {
-            pipPlugin.onDetachedFromActivityForConfigChanges();
+        Log.d("AdvancedVideoPlayer", "⚙️ Detached from activity for config changes");
+        if (pictureInPicturePlugin != null) {
+            pictureInPicturePlugin.onDetachedFromActivityForConfigChanges();
         }
     }
 
     @Override
     public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
-        activity = binding.getActivity();
-        if (pipPlugin != null) {
-            pipPlugin.onReattachedToActivityForConfigChanges(binding);
+        Log.d("AdvancedVideoPlayer", "✅ Reattached to activity after config changes");
+        if (pictureInPicturePlugin != null) {
+            pictureInPicturePlugin.onReattachedToActivityForConfigChanges(binding);
         }
     }
 
     @Override
     public void onDetachedFromActivity() {
-        activity = null;
-        if (pipPlugin != null) {
-            pipPlugin.onDetachedFromActivity();
+        Log.d("AdvancedVideoPlayer", "❌ Detached from activity");
+        if (pictureInPicturePlugin != null) {
+            pictureInPicturePlugin.onDetachedFromActivity();
         }
     }
 
     @Override
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+        if (sessionManager != null && sessionManagerListener != null) {
+            try {
+                sessionManager.removeSessionManagerListener(sessionManagerListener, CastSession.class);
+                Log.d("AdvancedVideoPlayer", "✅ SessionManagerListener removido");
+            } catch (Exception e) {
+                Log.e("AdvancedVideoPlayer", "❌ Error removiendo SessionManagerListener: " + e.getMessage());
+            }
+        }
+        
+        if (mediaRouter != null && routerCallback != null) {
+            try {
+                mediaRouter.removeCallback(routerCallback);
+                Log.d("AdvancedVideoPlayer", "✅ MediaRouterCallback removido");
+            } catch (Exception e) {
+                Log.e("AdvancedVideoPlayer", "❌ Error removiendo MediaRouterCallback: " + e.getMessage());
+            }
+        }
+        
+        if (pictureInPicturePlugin != null) {
+            pictureInPicturePlugin.onDetachedFromEngine(binding);
+        }
+        
         channel.setMethodCallHandler(null);
         screenSharingChannel.setMethodCallHandler(null);
+        Log.d("AdvancedVideoPlayer", "🔍 Plugin detached from engine");
     }
 }
 
-// PlatformView que genera el botón nativo de Cast
-class CastButtonFactoryView extends PlatformViewFactory {
-    private final Context context;
-    private final Activity activity;
-
-    CastButtonFactoryView(Context context, Activity activity) {
-        super(StandardMessageCodec.INSTANCE);
-        this.context = context;
-        this.activity = activity;
+// Callback para detectar cambios en las rutas de MediaRouter
+class MediaRouterCallback extends MediaRouter.Callback {
+    @Override
+    public void onRouteAdded(MediaRouter router, MediaRouter.RouteInfo route) {
+        Log.d("AdvancedVideoPlayer", "🎉 ¡NUEVA RUTA AGREGADA! " + route.getName() + " (ID: " + route.getId() + ")");
+        Log.d("AdvancedVideoPlayer", "   - Descripción: " + route.getDescription());
+        Log.d("AdvancedVideoPlayer", "   - Estado: " + route.getConnectionState());
+        Log.d("AdvancedVideoPlayer", "   - Disponible: " + route.isEnabled());
     }
 
     @Override
-    public PlatformView create(Context context, int id, Object args) {
-        return new CastButtonPlatformView(this.context, this.activity);
-    }
-}
-
-class CastButtonPlatformView implements PlatformView {
-    private final FrameLayout frame;
-    private final Context context;
-    private final Activity activity;
-
-    CastButtonPlatformView(Context context, Activity activity) {
-        this.context = context;
-        this.activity = activity;
-        frame = new FrameLayout(context);
-        try {
-            // Crear el MediaRouteButton nativo usando la API correcta de Java
-            MediaRouteButton castButton = new MediaRouteButton(context);
-            
-            // Configurar el selector de rutas para Google Cast
-            MediaRouteSelector selector = new MediaRouteSelector.Builder()
-                .addControlCategory(MediaControlIntent.CATEGORY_LIVE_VIDEO)
-                .addControlCategory(MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
-                .build();
-            
-            castButton.setRouteSelector(selector);
-            
-            // Configurar el MediaRouteButton con CastButtonFactory
-            CastButtonFactory.setUpMediaRouteButton(context, castButton);
-            frame.addView(castButton);
-            Log.d("AdvancedVideoPlayer", "✅ MediaRouteButton nativo creado y configurado correctamente");
-        } catch (Exception e) {
-            Log.e("AdvancedVideoPlayer", "❌ Error creando MediaRouteButton: " + e.getMessage());
-            // Fallback: crear un botón simple que abra el diálogo nativo
-            android.widget.Button fallbackButton = new android.widget.Button(context);
-            fallbackButton.setText("Cast");
-            fallbackButton.setBackgroundColor(0xFF2196F3);
-            fallbackButton.setTextColor(0xFFFFFFFF);
-            fallbackButton.setOnClickListener(v -> {
-                Log.d("AdvancedVideoPlayer", "Cast button clicked - abriendo diálogo nativo");
-                showCastDialog();
-            });
-            frame.addView(fallbackButton);
-        }
+    public void onRouteRemoved(MediaRouter router, MediaRouter.RouteInfo route) {
+        Log.d("AdvancedVideoPlayer", "❌ Ruta removida: " + route.getName() + " (ID: " + route.getId() + ")");
     }
 
     @Override
-    public View getView() {
-        return frame;
+    public void onRouteChanged(MediaRouter router, MediaRouter.RouteInfo route) {
+        Log.d("AdvancedVideoPlayer", "🔄 Ruta cambiada: " + route.getName() + " (ID: " + route.getId() + ")");
+        Log.d("AdvancedVideoPlayer", "   - Nuevo estado: " + route.getConnectionState());
     }
 
     @Override
-    public void dispose() {
-        // No action needed
+    public void onRouteSelected(MediaRouter router, MediaRouter.RouteInfo route) {
+        Log.d("AdvancedVideoPlayer", "✅ Ruta seleccionada: " + route.getName() + " (ID: " + route.getId() + ")");
     }
-    
-    private void showCastDialog() {
-        try {
-            if (activity == null) {
-                Log.e("AdvancedVideoPlayer", "❌ Activity no disponible para mostrar Cast Dialog");
-                return;
-            }
-            
-            // Verificar que la Activity sea FragmentActivity
-            if (!(activity instanceof FragmentActivity)) {
-                Log.e("AdvancedVideoPlayer", "❌ Activity no es FragmentActivity, usando fallback");
-                // Fallback: usar MediaRouteButton
-                showCastDialogFallback();
-                return;
-            }
-            
-            FragmentActivity fragmentActivity = (FragmentActivity) activity;
-            
-            // Crear el selector de rutas para Google Cast
-            MediaRouteSelector selector = new MediaRouteSelector.Builder()
-                .addControlCategory(MediaControlIntent.CATEGORY_LIVE_VIDEO)
-                .addControlCategory(MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
-                .build();
-            
-            // Crear y mostrar el MediaRouteChooserDialogFragment oficial
-            MediaRouteChooserDialogFragment dialogFragment = new MediaRouteChooserDialogFragment();
-            dialogFragment.setRouteSelector(selector);
-            dialogFragment.show(fragmentActivity.getSupportFragmentManager(), "media_chooser");
-            
-            Log.d("AdvancedVideoPlayer", "✅ Diálogo nativo de Google Cast abierto (como Disney+)");
-        } catch (Exception e) {
-            Log.e("AdvancedVideoPlayer", "❌ Error abriendo diálogo nativo: " + e.getMessage());
-            // Fallback en caso de error
-            showCastDialogFallback();
-        }
-    }
-    
-    private void showCastDialogFallback() {
-        try {
-            // Crear el selector de rutas para Google Cast
-            MediaRouteSelector selector = new MediaRouteSelector.Builder()
-                .addControlCategory(MediaControlIntent.CATEGORY_LIVE_VIDEO)
-                .addControlCategory(MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
-                .build();
-            
-            // Crear un MediaRouteButton temporal para abrir el diálogo nativo
-            MediaRouteButton tempButton = new MediaRouteButton(context);
-            tempButton.setRouteSelector(selector);
-            
-            // Simular el clic para abrir el diálogo nativo (como Disney+)
-            tempButton.performClick();
-            
-            Log.d("AdvancedVideoPlayer", "✅ Diálogo nativo de Google Cast abierto (fallback)");
-        } catch (Exception e) {
-            Log.e("AdvancedVideoPlayer", "❌ Error en fallback: " + e.getMessage());
-        }
-    }
-    
-    private void showNativeCastDialog() {
-        try {
-            if (activity == null) {
-                Log.e("AdvancedVideoPlayer", "❌ Activity no disponible para mostrar Cast Dialog");
-                return;
-            }
-            
-            // Verificar que la Activity sea FragmentActivity
-            if (!(activity instanceof FragmentActivity)) {
-                Log.e("AdvancedVideoPlayer", "❌ Activity no es FragmentActivity, usando fallback");
-                // Fallback: usar MediaRouteButton
-                showCastDialogFallback();
-                return;
-            }
-            
-            FragmentActivity fragmentActivity = (FragmentActivity) activity;
-            
-            // Crear el selector de rutas para Google Cast
-            MediaRouteSelector selector = new MediaRouteSelector.Builder()
-                .addControlCategory(MediaControlIntent.CATEGORY_LIVE_VIDEO)
-                .addControlCategory(MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
-                .build();
-            
-            // Crear y mostrar el MediaRouteChooserDialogFragment oficial
-            MediaRouteChooserDialogFragment dialogFragment = new MediaRouteChooserDialogFragment();
-            dialogFragment.setRouteSelector(selector);
-            dialogFragment.show(fragmentActivity.getSupportFragmentManager(), "media_chooser");
-            
-            Log.d("AdvancedVideoPlayer", "✅ Diálogo nativo de Google Cast abierto (como Disney+)");
-        } catch (Exception e) {
-            Log.e("AdvancedVideoPlayer", "❌ Error abriendo diálogo nativo: " + e.getMessage());
-            // Fallback en caso de error
-            showCastDialogFallback();
-        }
+
+    @Override
+    public void onRouteUnselected(MediaRouter router, MediaRouter.RouteInfo route) {
+        Log.d("AdvancedVideoPlayer", "🔌 Ruta deseleccionada: " + route.getName() + " (ID: " + route.getId() + ")");
     }
 }

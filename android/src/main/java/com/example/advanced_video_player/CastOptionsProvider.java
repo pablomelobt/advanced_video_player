@@ -19,7 +19,7 @@ public class CastOptionsProvider implements OptionsProvider {
                 .setActions(ImmutableList.of(
                         MediaIntentReceiver.ACTION_TOGGLE_PLAYBACK,
                         MediaIntentReceiver.ACTION_STOP_CASTING),
-                        new int[]{1, 2})
+                        new int[]{0, 1})
                 .build();
 
         CastMediaOptions mediaOptions = new CastMediaOptions.Builder()

@@ -97,6 +97,14 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
         case "isInPictureInPictureMode":
             result(isInPictureInPictureMode())
 
+        case "clearNativePlayersCache":
+            if #available(iOS 15.0, *) {
+                PlayerView.clearSharedPlayersCache()
+                result(true)
+            } else {
+                result(false)
+            }
+
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -146,7 +154,7 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
 
         print("[DEBUG] 🎥 Activando PiP con player compartido...")
 
-        guard let player = AdvancedVideoPlayerPlugin.sharedPlayer,
+        guard let _ = AdvancedVideoPlayerPlugin.sharedPlayer,
               let layer = AdvancedVideoPlayerPlugin.sharedPlayerLayer else {
             print("[DEBUG] ❌ No hay player o layer existente")
             return false
@@ -396,9 +404,12 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
     private let messenger: FlutterBinaryMessenger
     private var eventChannel: FlutterEventChannel?
     private var eventSink: FlutterEventSink?
-    private var wasInBackground = false
-    private var pipWasActiveBeforeBackground = false
     var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    
+    // 🌐 Players compartidos para mantener estado entre navegaciones
+    static var sharedNativePlayers: [String: AVPlayer] = [:]
+    static var sharedNativePlayerLayers: [String: AVPlayerLayer] = [:]
+    static var sharedNativePipControllers: [String: AVPictureInPictureController] = [:]
 
     
     init(frame: CGRect, viewId: Int64, messenger: FlutterBinaryMessenger) {
@@ -413,20 +424,20 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
             self?.eventSink = sink
         })
         
-        // Detectar cuando la app vuelve del background (como Disney+)
+        // 🎯 Detectar cuando la app vuelve del background (estilo Disney+)
         setupAppStateNotifications()
     }
     
     private func setupAppStateNotifications() {
-        // Detectar cuando la app va al background
+        // 🏠 Detectar cuando la app vuelve al foreground (caso Disney+)
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(appDidEnterBackground),
-            name: UIApplication.didEnterBackgroundNotification,
+            selector: #selector(appWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification,
             object: nil
         )
         
-        // Detectar cuando la app vuelve del background
+        // También escuchar cuando la app se vuelve activa
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(appDidBecomeActive),
@@ -435,34 +446,64 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
         )
     }
     
-    @objc private func appDidEnterBackground() {
-        wasInBackground = true
-        pipWasActiveBeforeBackground = pipController?.isPictureInPictureActive ?? false
-        print("[PlayerView] 📱 App fue al background - PiP estaba activo: \(pipWasActiveBeforeBackground)")
+    @objc private func appWillEnterForeground() {
+        print("[PlayerView] 🔔 App entrando al foreground - verificando PiP...")
+        
+        guard let pipController = pipController else {
+            print("[PlayerView] ⚠️ PiP Controller es nil - no se puede verificar estado")
+            return
+        }
+        
+        print("[PlayerView] 📱 PiP Controller existe - estado activo: \(pipController.isPictureInPictureActive)")
+        
+        // 🧭 Si PiP está activo cuando el usuario vuelve a la app → cerrar PiP
+        if pipController.isPictureInPictureActive {
+            print("[PlayerView] 🧭 Usuario volvió a la app con PiP activo → CERRANDO PiP automáticamente")
+            
+            // 1️⃣ Detener PiP inmediatamente
+            pipController.stopPictureInPicture()
+            
+            // 2️⃣ Notificar a Flutter que debe mostrar full screen
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                print("[PlayerView] 📤 Enviando evento pip_restore_fullscreen a Flutter")
+                self.sendEvent([
+                    "event": "pip_restore_fullscreen",
+                    "action": "navigate_to_fullscreen",
+                    "reason": "app_resumed_with_pip_active"
+                ])
+            }
+        } else {
+            print("[PlayerView] ℹ️ PiP no estaba activo al volver a la app")
+        }
     }
     
     @objc private func appDidBecomeActive() {
-        // Solo navegar a fullscreen si:
-        // 1. La app estaba en background
-        // 2. PiP estaba activo antes de ir al background
-        // 3. PiP sigue activo ahora
-        if wasInBackground && pipWasActiveBeforeBackground {
-            if let pipController = pipController, pipController.isPictureInPictureActive {
-                print("[PlayerView] 🏠 App volvió del background con PiP activo → navegando a fullscreen")
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self.sendEvent([
-                        "event": "pip_restore_to_fullscreen",
-                        "action": "navigate_to_fullscreen",
-                        "reason": "app_resumed_from_background"
-                    ])
-                }
-            }
+        print("[PlayerView] 🎯 App se volvió activa - verificando PiP...")
+        
+        guard let pipController = pipController else {
+            print("[PlayerView] ⚠️ PiP Controller es nil en appDidBecomeActive")
+            return
         }
         
-        // Reset flags
-        wasInBackground = false
-        pipWasActiveBeforeBackground = false
+        print("[PlayerView] 📱 App activa - estado PiP: \(pipController.isPictureInPictureActive)")
+        
+        // Si PiP está activo cuando la app se vuelve activa → cerrar PiP
+        if pipController.isPictureInPictureActive {
+            print("[PlayerView] 🧭 App activa con PiP activo → CERRANDO PiP automáticamente")
+            
+            // Detener PiP inmediatamente
+            pipController.stopPictureInPicture()
+            
+            // Notificar a Flutter
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                print("[PlayerView] 📤 Enviando evento desde appDidBecomeActive")
+                self.sendEvent([
+                    "event": "pip_restore_fullscreen",
+                    "action": "navigate_to_fullscreen",
+                    "reason": "app_became_active_with_pip_active"
+                ])
+            }
+        }
     }
     
     required init?(coder: NSCoder) {
@@ -472,30 +513,84 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
     func setup(with url: URL, autoplay: Bool = true) {
         print("[PlayerView] 🎬 Configurando player con URL: \(url)")
         
-        let item = AVPlayerItem(url: url)
-        player = AVPlayer(playerItem: item)
-        playerLayer = AVPlayerLayer(player: player)
-        playerLayer?.videoGravity = .resizeAspect
+        let urlKey = url.absoluteString
         
-        if let playerLayer = playerLayer {
-            layer.addSublayer(playerLayer)
-            playerLayer.frame = bounds
+        // 🔄 Verificar si ya existe un player compartido para esta URL
+        if let sharedPlayer = PlayerView.sharedNativePlayers[urlKey],
+           let sharedLayer = PlayerView.sharedNativePlayerLayers[urlKey] {
+            
+            print("[PlayerView] ♻️ REUTILIZANDO player compartido - Video continúa desde posición: \(CMTimeGetSeconds(sharedPlayer.currentTime())) segundos")
+            
+            // Usar el player compartido existente
+            self.player = sharedPlayer
+            self.playerLayer = sharedLayer
+            
+            // Remover el layer de su superlayer anterior (si existe)
+            sharedLayer.removeFromSuperlayer()
+            
+            // Agregar el layer a esta vista
+            layer.addSublayer(sharedLayer)
+            sharedLayer.frame = bounds
+            
+            // Reutilizar el PiP controller si existe
+            if let sharedPipController = PlayerView.sharedNativePipControllers[urlKey] {
+                self.pipController = sharedPipController
+                self.pipController?.delegate = self
+                print("[PlayerView] ♻️ Reutilizando PiP Controller compartido")
+            } else if AVPictureInPictureController.isPictureInPictureSupported() {
+                // Crear nuevo PiP controller si no existe
+                if let newPipController = AVPictureInPictureController(playerLayer: sharedLayer) {
+                    newPipController.delegate = self
+                    self.pipController = newPipController
+                    PlayerView.sharedNativePipControllers[urlKey] = newPipController
+                    print("[PlayerView] ✅ Nuevo PiP Controller creado y guardado")
+                }
+            }
+            
+            // Si autoplay está activado y el player está pausado, reproducir
+            if autoplay && sharedPlayer.rate == 0 {
+                sharedPlayer.play()
+                print("[PlayerView] ▶️ Reanudando reproducción desde posición actual")
+            }
+            
+            return
         }
+        
+        // 🆕 No existe player compartido, crear uno nuevo
+        print("[PlayerView] 🆕 Creando NUEVO player compartido para URL: \(url)")
+        
+        let item = AVPlayerItem(url: url)
+        let newPlayer = AVPlayer(playerItem: item)
+        let newLayer = AVPlayerLayer(player: newPlayer)
+        newLayer.videoGravity = .resizeAspect
+        
+        // Guardar en cache compartido
+        PlayerView.sharedNativePlayers[urlKey] = newPlayer
+        PlayerView.sharedNativePlayerLayers[urlKey] = newLayer
+        
+        // Asignar a esta instancia
+        self.player = newPlayer
+        self.playerLayer = newLayer
+        
+        // Agregar layer a la vista
+        layer.addSublayer(newLayer)
+        newLayer.frame = bounds
         
         // Configurar audio session
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
         try? AVAudioSession.sharedInstance().setActive(true)
         
         if autoplay {
-            player?.play()
+            newPlayer.play()
         }
         
         // Configurar PiP si está soportado
         if AVPictureInPictureController.isPictureInPictureSupported() {
-            if let playerLayer = playerLayer {
-                pipController = AVPictureInPictureController(playerLayer: playerLayer)
-                pipController?.delegate = self
-                print("[PlayerView] ✅ PiP Controller creado y listo")
+            if let newPipController = AVPictureInPictureController(playerLayer: newLayer) {
+                newPipController.delegate = self
+                self.pipController = newPipController
+                PlayerView.sharedNativePipControllers[urlKey] = newPipController
+                print("[PlayerView] ✅ PiP Controller creado y guardado en cache")
             }
         } else {
             print("[PlayerView] ⚠️ PiP no está soportado en este dispositivo")
@@ -515,30 +610,9 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
             return
         }
         
+        // Iniciar PiP
         pipController.startPictureInPicture()
-        sendAppToBackground()
-    }
-
-    func sendAppToBackground() {
-        print("[PlayerView] 🕐 Enviando app al background de forma segura...")
-
-        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "SendToBackground") {
-            // Bloque de expiración: iOS finaliza la tarea si dura demasiado
-            UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
-            self.backgroundTaskID = .invalid
-        }
-
-        // Simula trabajo en segundo plano antes de suspender (opcional)
-        DispatchQueue.global().async {
-            // 🔧 Aquí podrías guardar estado, pausar video, etc.
-            sleep(1)
-
-            // Marca la tarea como completada → iOS suspenderá la app
-            UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
-            self.backgroundTaskID = .invalid
-
-            print("[PlayerView] 🏠 App pasó a background (controlado por sistema)")
-        }
+        print("[PlayerView] 🎬 PiP iniciado")
     }
     
     func stopPiP() {
@@ -609,6 +683,11 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
         return bufferEmpty && !likelyToKeepUp
     }
     
+    func isPlaying() -> Bool {
+        guard let player = player else { return false }
+        return player.rate > 0
+    }
+    
     override func layoutSubviews() {
         super.layoutSubviews()
         playerLayer?.frame = bounds
@@ -626,6 +705,12 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
         // Ocultar la vista principal al entrar en PiP
         self.isHidden = true
         sendEvent(["event": "pip_started"])
+        
+        // 💫 Enviar app al background automáticamente (estilo Disney+)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
+            print("[PlayerView] 🏠 App minimizada automáticamente")
+        }
     }
     
     func pictureInPictureControllerWillStopPictureInPicture(_ controller: AVPictureInPictureController) {
@@ -647,12 +732,13 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
     }
     
     func pictureInPictureController(_ controller: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
-        print("[PlayerView] 🔄 Usuario volvió desde PiP → navegando a fullscreen")
+        print("[PlayerView] 🔄 Usuario tocó el botón de restaurar desde PiP → navegando a fullscreen")
         
         // Enviar evento a Flutter para que navegue a fullscreen
         sendEvent([
-            "event": "pip_restore_to_fullscreen",
-            "action": "navigate_to_fullscreen"
+            "event": "pip_restore_fullscreen",
+            "action": "navigate_to_fullscreen",
+            "reason": "user_tapped_restore_button"
         ])
         
         // Confirmar que se restauró la UI
@@ -668,20 +754,59 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
     }
     
     deinit {
-        print("[PlayerView] 🗑️ Limpiando player view")
+        print("[PlayerView] 🗑️ Limpiando player view - MANTENIENDO player compartido en memoria")
         
         // Limpiar notificaciones
         NotificationCenter.default.removeObserver(self)
         
-        // Limpiar player
-        player?.pause()
-        player = nil
+        // 🚨 IMPORTANTE: NO destruir el player ni el layer compartidos
+        // Solo remover el layer de esta vista para que pueda ser agregado a otra
         playerLayer?.removeFromSuperlayer()
-        playerLayer = nil
+        
+        // Solo limpiar el delegate del PiP controller, pero mantenerlo en cache
         pipController?.delegate = nil
+        
+        // Limpiar referencias locales (pero los objetos compartidos permanecen en el diccionario estático)
+        player = nil
+        playerLayer = nil
         pipController = nil
+        
         eventChannel?.setStreamHandler(nil)
         eventSink = nil
+        
+        print("[PlayerView] ✅ Vista limpiada - Player compartido aún disponible para reutilización")
+    }
+    
+    /// Método estático para limpiar el cache de players compartidos (llamar cuando se necesite liberar memoria)
+    static func clearSharedPlayersCache() {
+        print("[PlayerView] 🧹 Limpiando cache de players compartidos...")
+        
+        // Detener y limpiar todos los players
+        for (url, player) in sharedNativePlayers {
+            print("[PlayerView] 🗑️ Limpiando player para URL: \(url)")
+            player.pause()
+            player.replaceCurrentItem(with: nil)
+        }
+        
+        // Limpiar layers
+        for (_, layer) in sharedNativePlayerLayers {
+            layer.removeFromSuperlayer()
+        }
+        
+        // Limpiar PiP controllers
+        for (_, pipController) in sharedNativePipControllers {
+            if pipController.isPictureInPictureActive {
+                pipController.stopPictureInPicture()
+            }
+            pipController.delegate = nil
+        }
+        
+        // Vaciar los diccionarios
+        sharedNativePlayers.removeAll()
+        sharedNativePlayerLayers.removeAll()
+        sharedNativePipControllers.removeAll()
+        
+        print("[PlayerView] ✅ Cache de players compartidos limpiado completamente")
     }
 }
 
@@ -813,6 +938,9 @@ class PlayerViewWrapper: NSObject, FlutterPlatformView {
             
         case "isBuffering":
             result(playerView.isBuffering())
+            
+        case "isPlaying":
+            result(playerView.isPlaying())
             
         default:
             result(FlutterMethodNotImplemented)

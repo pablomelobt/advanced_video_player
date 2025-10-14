@@ -17,6 +17,10 @@ class FullscreenVideoPage extends StatefulWidget {
   final bool enableAirPlay;
   final String? videoTitle;
   final String? videoDescription;
+  final VoidCallback? onVideoEnd;
+  final VoidCallback? onVideoStart;
+  final VoidCallback? onVideoPause;
+  final VoidCallback? onVideoPlay;
 
   const FullscreenVideoPage({
     super.key,
@@ -29,6 +33,10 @@ class FullscreenVideoPage extends StatefulWidget {
     this.enableAirPlay = true,
     this.videoTitle,
     this.videoDescription,
+    this.onVideoEnd,
+    this.onVideoStart,
+    this.onVideoPause,
+    this.onVideoPlay,
   });
 
   @override
@@ -39,22 +47,28 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     with TickerProviderStateMixin {
   bool _showControls = true;
   bool _isPlaying = false;
-  bool _isPictureInPictureSupported = false;
   bool _isInPictureInPictureMode = false;
   bool _isScreenSharingSupported = false;
   bool _isAirPlaySupported = false;
   // ignore: unused_field
   bool _isAirPlayActive = false;
   ScreenSharingState _screenSharingState = ScreenSharingState.disconnected;
+  bool _isVideoSharingActive = false;
+  bool _canTransmit = false;
+  int _transmitCountdown = 0;
   late AnimationController _controlsAnimationController;
   late Animation<double> _controlsAnimation;
   Timer? _hideControlsTimer;
   Timer? _pipStateTimer;
   Timer? _hideAirPlayTimer;
+  Timer? _transmitDelayTimer;
   StreamSubscription<dynamic>? _pipModeSubscription;
   StreamSubscription<ScreenSharingState>? _screenSharingStateSubscription;
   StreamSubscription<String>? _screenSharingErrorSubscription;
   ScreenSharingService? _screenSharingService;
+  bool _hasVideoStarted =
+      false; // Para controlar si onVideoStart ya fue llamado
+  bool _hasVideoEnded = false; // Para controlar si onVideoEnd ya fue llamado
 
   // Variables para el arrastre de la barra de progreso
   bool _isDraggingProgressBar = false;
@@ -70,21 +84,10 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     _setupFullscreen();
     _setupAnimations();
     _setupVideoListener();
-    _checkPictureInPictureSupport();
     _setupPictureInPictureListener();
     _initializeScreenSharing();
     _initializeAirPlay();
     _startAirPlayTimer();
-  }
-
-  void _checkPictureInPictureSupport() async {
-    final supported =
-        await PictureInPictureService.isPictureInPictureSupported();
-    if (mounted) {
-      setState(() {
-        _isPictureInPictureSupported = supported;
-      });
-    }
   }
 
   void _setupPictureInPictureListener() {
@@ -198,6 +201,13 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
       if (!mounted) return;
       setState(() {
         _screenSharingState = state;
+        // Si se desconecta, también detener la compartición activa y resetear el delay
+        if (state == ScreenSharingState.disconnected) {
+          _isVideoSharingActive = false;
+          _canTransmit = false;
+          _transmitCountdown = 0;
+          _transmitDelayTimer?.cancel();
+        }
       });
     });
 
@@ -242,12 +252,57 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
 
   void _videoListener() {
     if (!mounted) return;
+
+    // Verificar si el video terminó (con margen de tolerancia de 500ms)
+    final duration = widget.controller.value.duration;
+    final position = widget.controller.value.position;
+    final isNearEnd = duration.inMilliseconds > 0 &&
+        (position.inMilliseconds >= duration.inMilliseconds - 500);
+
+    if (isNearEnd && _isPlaying && !_hasVideoEnded) {
+      setState(() {
+        _isPlaying = false;
+        _hasVideoEnded = true;
+      });
+      debugPrint(
+          '[FullscreenVideoPage] 🏁 Video ended - Position: ${position.inSeconds}s, Duration: ${duration.inSeconds}s');
+      widget.onVideoEnd?.call();
+      return;
+    }
+
     final newPlayingState = widget.controller.value.isPlaying;
+
+    // Detectar si el video está reproduciéndose y pasó de los primeros segundos
+    if (newPlayingState && !_hasVideoStarted && position.inSeconds >= 1) {
+      _hasVideoStarted = true;
+      debugPrint(
+          '[FullscreenVideoPage] ✨ Video started for first time (auto-detected at ${position.inSeconds}s)');
+      widget.onVideoStart?.call();
+    }
+
     if (_isPlaying != newPlayingState) {
       setState(() {
         _isPlaying = newPlayingState;
       });
       _updatePipPlaybackState(newPlayingState);
+
+      // Callbacks basados en el cambio de estado
+      if (newPlayingState) {
+        // El video comenzó a reproducirse
+        debugPrint('[FullscreenVideoPage] 🎬 Video playing');
+        widget.onVideoPlay?.call();
+
+        // Si es la primera vez, llamar onVideoStart
+        if (!_hasVideoStarted) {
+          _hasVideoStarted = true;
+          debugPrint('[FullscreenVideoPage] ✨ Video started for first time');
+          widget.onVideoStart?.call();
+        }
+      } else {
+        // El video se pausó
+        debugPrint('[FullscreenVideoPage] ⏸️ Video paused');
+        widget.onVideoPause?.call();
+      }
     }
   }
 
@@ -345,7 +400,11 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
   }
 
   void _enterPictureInPicture() async {
-    if (!_isPictureInPictureSupported) {
+    // Verificar soporte nuevamente por si la verificación inicial falló
+    final supported =
+        await PictureInPictureService.isPictureInPictureSupported();
+
+    if (!supported) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -376,6 +435,12 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
             'Picture-in-Picture activado con controles nativos (Android)');
       } else {
         debugPrint('No se pudo activar Picture-in-Picture');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo activar Picture-in-Picture'),
+            duration: Duration(seconds: 2),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -535,26 +600,32 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
                                           widget.enableAirPlay &&
                                           _isAirPlaySupported)
                                         const SizedBox(width: 8),
+
+                                      // Botón de Cast
                                       if (Platform.isAndroid &&
                                           widget.enableScreenSharing &&
-                                          _isScreenSharingSupported)
-                                        _buildControlButton(
-                                          icon: _screenSharingState ==
-                                                  ScreenSharingState.connected
-                                              ? Icons.cast_connected
-                                              : Icons.cast,
-                                          onPressed: _screenSharingState ==
-                                                  ScreenSharingState.connected
-                                              ? _disconnectScreenSharing
-                                              : _showScreenSharingDialog,
-                                          tooltip: _screenSharingState ==
-                                                  ScreenSharingState.connected
-                                              ? 'Desconectar compartir pantalla'
-                                              : 'Compartir pantalla',
-                                          size: 40,
-                                        ),
-                                      if (widget.enableScreenSharing &&
-                                          _isScreenSharingSupported)
+                                          _isScreenSharingSupported &&
+                                          !_isVideoSharingActive)
+                                        _screenSharingState ==
+                                                ScreenSharingState.connected
+                                            ? _buildTransmitButton()
+                                            : _buildControlButton(
+                                                icon: Icons.cast,
+                                                onPressed:
+                                                    _showScreenSharingDialog,
+                                                tooltip: 'Conectar a TV',
+                                                size: 40,
+                                              ),
+                                      if (Platform.isAndroid &&
+                                          widget.enableScreenSharing &&
+                                          _isScreenSharingSupported &&
+                                          !_isVideoSharingActive)
+                                        const SizedBox(width: 8),
+
+                                      // Botón para detener compartición cuando el video se esté compartiendo activamente
+                                      if (_isVideoSharingActive)
+                                        _buildStopSharingButton(),
+                                      if (_isVideoSharingActive)
                                         const SizedBox(width: 8),
                                       if (widget.enablePictureInPicture)
                                         _buildControlButton(
@@ -866,6 +937,101 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     );
   }
 
+  Widget _buildStopSharingButton() {
+    return Tooltip(
+      message: 'Detener compartición y desconectar',
+      child: GestureDetector(
+        onTap: _stopVideoSharing,
+        child: Container(
+          alignment: Alignment.center,
+          height: 40,
+          width: 40,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.red.shade400,
+                Colors.red.shade600,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.withOpacity(0.5),
+                blurRadius: 10,
+                spreadRadius: 1,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.stop_screen_share,
+            size: 24,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransmitButton() {
+    final canTap = _canTransmit;
+
+    return Tooltip(
+      message: canTap
+          ? 'Transmitir video al TV'
+          : 'Espera $_transmitCountdown segundos...',
+      child: GestureDetector(
+        onTap: canTap ? _shareCurrentVideo : null,
+        child: Container(
+          alignment: Alignment.center,
+          height: 40,
+          width: 40,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: canTap
+                  ? [
+                      widget.primaryColor,
+                      widget.secondaryColor,
+                    ]
+                  : [
+                      Colors.grey.shade400,
+                      Colors.grey.shade500,
+                    ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: (canTap ? widget.primaryColor : Colors.grey)
+                    .withOpacity(0.5),
+                blurRadius: 10,
+                spreadRadius: 1,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: canTap
+              ? const Icon(
+                  Icons.send_to_mobile,
+                  size: 24,
+                  color: Colors.white,
+                )
+              : Text(
+                  '$_transmitCountdown',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showScreenSharingDialog() async {
     if (_screenSharingService == null || !_isScreenSharingSupported) {
       if (!mounted) return;
@@ -879,12 +1045,35 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     }
 
     if (!mounted) return;
-    setState(() {});
+
+    // Mostrar indicador de búsqueda
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Buscando dispositivos...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
 
     try {
       final devices = await _screenSharingService!.discoverDevices();
+
+      // Cerrar el diálogo de carga
+      if (mounted) Navigator.of(context).pop();
+
       if (!mounted) return;
-      setState(() {});
 
       if (devices.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -896,10 +1085,34 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
         return;
       }
 
-      _showDeviceSelectionDialog(devices);
+      // Filtrar dispositivos duplicados por nombre y rutas por defecto del sistema
+      final uniqueDevices = <String, Map<String, dynamic>>{};
+      for (var device in devices) {
+        final deviceName =
+            device['name'] as String? ?? 'Dispositivo desconocido';
+        final deviceId = device['id'] as String? ?? '';
+
+        // Filtrar dispositivos del sistema que no son reales
+        if (deviceId.contains('DEFAULT_ROUTE') ||
+            deviceName.toLowerCase() == 'dispositivo' ||
+            deviceName.toLowerCase() == 'device') {
+          continue;
+        }
+
+        // Solo guardar el primer dispositivo con cada nombre único
+        if (!uniqueDevices.containsKey(deviceName)) {
+          uniqueDevices[deviceName] = device;
+        }
+      }
+
+      final filteredDevices = uniqueDevices.values.toList();
+
+      _showDeviceSelectionDialog(filteredDevices);
     } catch (e) {
+      // Cerrar el diálogo de carga si hay error
+      if (mounted) Navigator.of(context).pop();
+
       if (!mounted) return;
-      setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error buscando dispositivos: $e'),
@@ -927,23 +1140,23 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
           children: [
             // Handle bar
             Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
+              margin: const EdgeInsets.only(top: 8),
+              width: 32,
+              height: 3,
               decoration: BoxDecoration(
-                color: Colors.grey[300],
+                color: Colors.grey[400],
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             // Title
             Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
               child: Text(
-                'Elige un dispositivo',
+                'Conectar a',
                 style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
                 ),
               ),
             ),
@@ -951,146 +1164,122 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
             ...devices.map((deviceData) {
               final device = deviceData;
               return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                child: ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  tileColor: Colors.grey[50],
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: widget.primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _connectToDevice(device);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          // Icono minimalista
+                          Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Icon(
+                              Icons.cast,
+                              size: 14,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // Texto
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  device['name'] ?? 'Dispositivo desconocido',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w400,
+                                    color: Colors.grey[800],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Flecha minimalista
+                          Icon(
+                            Icons.chevron_right,
+                            size: 18,
+                            color: Colors.grey[400],
+                          ),
+                        ],
+                      ),
                     ),
-                    child: Icon(
-                      device['type'] == 'chromecast' ? Icons.cast : Icons.cast,
-                      color: widget.primaryColor,
-                      size: 24,
-                    ),
                   ),
-                  title: Text(
-                    device['name'] ?? 'Dispositivo desconocido',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  subtitle: Text(
-                    device['type'] == 'chromecast'
-                        ? 'Google Cast'
-                        : 'SharePlay',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  trailing: Icon(
-                    Icons.arrow_forward_ios,
-                    size: 16,
-                    color: Colors.grey[400],
-                  ),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    _connectToDevice(device);
-                  },
                 ),
               );
             }),
-            // Additional options like YouTube
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                tileColor: Colors.grey[50],
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.tv,
-                    color: Colors.blue,
-                    size: 24,
-                  ),
-                ),
-                title: const Text(
-                  'Vincular con código de TV',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                subtitle: Text(
-                  'Usar código de vinculación',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                trailing: Icon(
-                  Icons.arrow_forward_ios,
-                  size: 16,
-                  color: Colors.grey[400],
-                ),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _showTvCodeDialog();
-                },
-              ),
-            ),
+
             // More info option
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-              child: ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                tileColor: Colors.grey[50],
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _showInfoDialog();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        // Icono minimalista
+                        Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[300],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Icon(
+                            Icons.info_outline,
+                            size: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Texto
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Más información',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w400,
+                                  color: Colors.grey[800],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Flecha minimalista
+                        Icon(
+                          Icons.chevron_right,
+                          size: 18,
+                          color: Colors.grey[400],
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Icon(
-                    Icons.info_outline,
-                    color: Colors.grey[600],
-                    size: 24,
-                  ),
                 ),
-                title: const Text(
-                  'Más información',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                subtitle: Text(
-                  'Ayuda con la conexión',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                trailing: Icon(
-                  Icons.arrow_forward_ios,
-                  size: 16,
-                  color: Colors.grey[400],
-                ),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _showInfoDialog();
-                },
               ),
             ),
             const SizedBox(height: 20),
@@ -1108,15 +1297,51 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
       final success =
           await _screenSharingService!.connectToDevice(deviceId, deviceName);
       if (!mounted) return;
+
       if (success) {
+        // Pausar el video en el celular inmediatamente
+        if (widget.controller.value.isPlaying) {
+          await widget.controller.pause();
+          setState(() {
+            _isPlaying = false;
+          });
+        }
+
+        if (!mounted) return;
+
+        // Iniciar countdown de 4 segundos antes de permitir transmitir
+        setState(() {
+          _canTransmit = false;
+          _transmitCountdown = 8;
+        });
+
+        _transmitDelayTimer?.cancel();
+        _transmitDelayTimer =
+            Timer.periodic(const Duration(seconds: 1), (timer) {
+          if (!mounted) {
+            timer.cancel();
+            return;
+          }
+
+          setState(() {
+            _transmitCountdown--;
+            if (_transmitCountdown <= 0) {
+              _canTransmit = true;
+              timer.cancel();
+            }
+          });
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Conectado a $deviceName'),
+            content: Text(
+                'Conectado a $deviceName - Espera unos segundos para transmitir'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
           ),
         );
-        _shareCurrentVideo();
       } else {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Error conectando al dispositivo'),
@@ -1142,6 +1367,14 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     }
 
     try {
+      // Pausar el video en el celular antes de compartir
+      if (widget.controller.value.isPlaying) {
+        await widget.controller.pause();
+        setState(() {
+          _isPlaying = false;
+        });
+      }
+
       final success = await _screenSharingService!.shareVideo(
         videoUrl: widget.controller.dataSource,
         title: widget.videoTitle ?? 'Video Compartido',
@@ -1151,6 +1384,9 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
 
       if (!mounted) return;
       if (success) {
+        setState(() {
+          _isVideoSharingActive = true;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Video compartido exitosamente'),
@@ -1176,35 +1412,43 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     }
   }
 
-  Future<void> _disconnectScreenSharing() async {
-    if (_screenSharingService != null) {
+  Future<void> _stopVideoSharing() async {
+    if (_screenSharingService == null) return;
+
+    try {
+      // Detener la reproducción en el dispositivo remoto
+      await _screenSharingService!.controlPlayback(
+        action: 'stop',
+      );
+
+      // Desconectar del dispositivo
       await _screenSharingService!.disconnect();
+
       if (!mounted) return;
+      setState(() {
+        _isVideoSharingActive = false;
+        _canTransmit = false;
+        _transmitCountdown = 0;
+      });
+
+      _transmitDelayTimer?.cancel();
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Desconectado del dispositivo'),
+          content: Text('Compartición detenida y desconectado del dispositivo'),
           backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error deteniendo video: $e'),
+          backgroundColor: Colors.red,
         ),
       );
     }
-  }
-
-  void _showTvCodeDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Vincular con código de TV'),
-        content: const Text(
-          'Esta funcionalidad permite conectar tu dispositivo usando un código que aparece en la pantalla de tu TV.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Entendido'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showInfoDialog() {
@@ -1233,6 +1477,7 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
     _hideControlsTimer?.cancel();
     _pipStateTimer?.cancel();
     _hideAirPlayTimer?.cancel();
+    _transmitDelayTimer?.cancel();
     _controlsAnimationController.dispose();
     _pipModeSubscription?.cancel();
     _screenSharingStateSubscription?.cancel();

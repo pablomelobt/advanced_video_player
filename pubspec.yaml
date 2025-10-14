@@ -1,6 +1,6 @@
 name: advanced_video_player
 description: "Un reproductor de video avanzado para Flutter con controles modernos, Picture-in-Picture, Google Cast, AirPlay y diseño personalizable."
-version: 0.0.2
+version: 1.0.0
 homepage: https://github.com/pablomelobt/advanced_video_player.git
 repository: https://github.com/pablomelobt/advanced_video_player.git
 issue_tracker: https://github.com/pablomelobt/advanced_video_player/issues
