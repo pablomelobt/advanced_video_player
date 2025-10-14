@@ -17,6 +17,10 @@ class FullscreenVideoPage extends StatefulWidget {
   final bool enableAirPlay;
   final String? videoTitle;
   final String? videoDescription;
+  final VoidCallback? onVideoEnd;
+  final VoidCallback? onVideoStart;
+  final VoidCallback? onVideoPause;
+  final VoidCallback? onVideoPlay;
 
   const FullscreenVideoPage({
     super.key,
@@ -29,6 +33,10 @@ class FullscreenVideoPage extends StatefulWidget {
     this.enableAirPlay = true,
     this.videoTitle,
     this.videoDescription,
+    this.onVideoEnd,
+    this.onVideoStart,
+    this.onVideoPause,
+    this.onVideoPlay,
   });
 
   @override
@@ -58,6 +66,9 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
   StreamSubscription<ScreenSharingState>? _screenSharingStateSubscription;
   StreamSubscription<String>? _screenSharingErrorSubscription;
   ScreenSharingService? _screenSharingService;
+  bool _hasVideoStarted =
+      false; // Para controlar si onVideoStart ya fue llamado
+  bool _hasVideoEnded = false; // Para controlar si onVideoEnd ya fue llamado
 
   // Variables para el arrastre de la barra de progreso
   bool _isDraggingProgressBar = false;
@@ -241,12 +252,57 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
 
   void _videoListener() {
     if (!mounted) return;
+
+    // Verificar si el video terminó (con margen de tolerancia de 500ms)
+    final duration = widget.controller.value.duration;
+    final position = widget.controller.value.position;
+    final isNearEnd = duration.inMilliseconds > 0 &&
+        (position.inMilliseconds >= duration.inMilliseconds - 500);
+
+    if (isNearEnd && _isPlaying && !_hasVideoEnded) {
+      setState(() {
+        _isPlaying = false;
+        _hasVideoEnded = true;
+      });
+      debugPrint(
+          '[FullscreenVideoPage] 🏁 Video ended - Position: ${position.inSeconds}s, Duration: ${duration.inSeconds}s');
+      widget.onVideoEnd?.call();
+      return;
+    }
+
     final newPlayingState = widget.controller.value.isPlaying;
+
+    // Detectar si el video está reproduciéndose y pasó de los primeros segundos
+    if (newPlayingState && !_hasVideoStarted && position.inSeconds >= 1) {
+      _hasVideoStarted = true;
+      debugPrint(
+          '[FullscreenVideoPage] ✨ Video started for first time (auto-detected at ${position.inSeconds}s)');
+      widget.onVideoStart?.call();
+    }
+
     if (_isPlaying != newPlayingState) {
       setState(() {
         _isPlaying = newPlayingState;
       });
       _updatePipPlaybackState(newPlayingState);
+
+      // Callbacks basados en el cambio de estado
+      if (newPlayingState) {
+        // El video comenzó a reproducirse
+        debugPrint('[FullscreenVideoPage] 🎬 Video playing');
+        widget.onVideoPlay?.call();
+
+        // Si es la primera vez, llamar onVideoStart
+        if (!_hasVideoStarted) {
+          _hasVideoStarted = true;
+          debugPrint('[FullscreenVideoPage] ✨ Video started for first time');
+          widget.onVideoStart?.call();
+        }
+      } else {
+        // El video se pausó
+        debugPrint('[FullscreenVideoPage] ⏸️ Video paused');
+        widget.onVideoPause?.call();
+      }
     }
   }
 

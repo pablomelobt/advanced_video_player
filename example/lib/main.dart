@@ -311,7 +311,7 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                 onVideoEnd: () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('¡Video terminado!'),
+                      content: Text('🏁 ¡Video terminado!'),
                       backgroundColor: Color(0xFF6366F1),
                     ),
                   );
@@ -404,6 +404,34 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                 ///
                 /// Se recomienda habilitar para aplicaciones iOS.
                 useNativePlayerOnIOS: true,
+
+                onVideoStart: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      duration: Duration(seconds: 1),
+                      content: Text('Video iniciado'),
+                      backgroundColor: Color(0xFF6366F1),
+                    ),
+                  );
+                },
+                onVideoPause: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      duration: Duration(seconds: 1),
+                      content: Text('Video pausado'),
+                      backgroundColor: Color(0xFF6366F1),
+                    ),
+                  );
+                },
+                onVideoPlay: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      duration: Duration(seconds: 1),
+                      content: Text('Video reproducido'),
+                      backgroundColor: Color(0xFF6366F1),
+                    ),
+                  );
+                },
               ),
             ),
 

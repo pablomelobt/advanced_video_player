@@ -24,6 +24,15 @@ class AdvancedVideoPlayer extends StatefulWidget {
   /// Callback cuando el video termina de reproducir
   final VoidCallback? onVideoEnd;
 
+  /// Callback cuando el video inicia de reproducir
+  final VoidCallback? onVideoStart;
+
+  /// Callback cuando el video pausa
+  final VoidCallback? onVideoPause;
+
+  /// Callback cuando el video play
+  final VoidCallback? onVideoPlay;
+
   /// Callback cuando ocurre un error
   final Function(String)? onError;
 
@@ -66,6 +75,9 @@ class AdvancedVideoPlayer extends StatefulWidget {
     required this.videoSource,
     this.isAsset = false,
     this.onVideoEnd,
+    this.onVideoStart,
+    this.onVideoPause,
+    this.onVideoPlay,
     this.onError,
     this.skipDuration = 10,
     this.enablePictureInPicture = true,
@@ -106,6 +118,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   double _lastNativeVideoPosition =
       0.0; // Guarda la última posición del video nativo
   Timer? _pairingTimer;
+  bool _hasVideoStarted =
+      false; // Para controlar si onVideoStart ya fue llamado
+  bool _hasVideoEnded = false; // Para controlar si onVideoEnd ya fue llamado
 
   // Getter para saber si estamos usando el reproductor nativo
   bool get _useNativePlayer => widget.useNativePlayerOnIOS && Platform.isIOS;
@@ -473,19 +488,56 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       return;
     }
 
-    if (_controller!.value.position >= _controller!.value.duration) {
+    // Verificar si el video terminó (con margen de tolerancia de 500ms)
+    final duration = _controller!.value.duration;
+    final position = _controller!.value.position;
+    final isNearEnd = duration.inMilliseconds > 0 &&
+        (position.inMilliseconds >= duration.inMilliseconds - 500);
+
+    if (isNearEnd && _isPlaying && !_hasVideoEnded) {
       setState(() {
         _isPlaying = false;
+        _hasVideoEnded = true;
       });
       _updatePipPlaybackState(false);
+      debugPrint(
+          '[AdvancedVideoPlayer] 🏁 Video ended - Position: ${position.inSeconds}s, Duration: ${duration.inSeconds}s');
       widget.onVideoEnd?.call();
-    } else {
-      final newPlayingState = _controller!.value.isPlaying;
-      if (_isPlaying != newPlayingState) {
-        setState(() {
-          _isPlaying = newPlayingState;
-        });
-        _updatePipPlaybackState(newPlayingState);
+      return;
+    }
+
+    final newPlayingState = _controller!.value.isPlaying;
+
+    // Detectar si el video está reproduciéndose y pasó de los primeros segundos
+    if (newPlayingState && !_hasVideoStarted && position.inSeconds >= 1) {
+      _hasVideoStarted = true;
+      debugPrint(
+          '[AdvancedVideoPlayer] ✨ Video started for first time (auto-detected at ${position.inSeconds}s)');
+      widget.onVideoStart?.call();
+    }
+
+    if (_isPlaying != newPlayingState) {
+      setState(() {
+        _isPlaying = newPlayingState;
+      });
+      _updatePipPlaybackState(newPlayingState);
+
+      // Callbacks basados en el cambio de estado
+      if (newPlayingState) {
+        // El video comenzó a reproducirse
+        debugPrint('[AdvancedVideoPlayer] 🎬 Video playing');
+        widget.onVideoPlay?.call();
+
+        // Si es la primera vez, llamar onVideoStart
+        if (!_hasVideoStarted) {
+          _hasVideoStarted = true;
+          debugPrint('[AdvancedVideoPlayer] ✨ Video started for first time');
+          widget.onVideoStart?.call();
+        }
+      } else {
+        // El video se pausó
+        debugPrint('[AdvancedVideoPlayer] ⏸️ Video paused');
+        widget.onVideoPause?.call();
       }
     }
   }
@@ -509,10 +561,19 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
           _nativeController!.pause();
           _isPlaying = false;
           _updatePipPlaybackState(false);
+          // Callback de pausa (solo para reproductor nativo)
+          widget.onVideoPause?.call();
         } else {
           _nativeController!.play();
           _isPlaying = true;
           _updatePipPlaybackState(true);
+          // Callback de play (solo para reproductor nativo)
+          widget.onVideoPlay?.call();
+          // Callback de inicio (solo la primera vez y solo para reproductor nativo)
+          if (!_hasVideoStarted) {
+            _hasVideoStarted = true;
+            widget.onVideoStart?.call();
+          }
         }
       });
       _showControlsTemporarily();
@@ -588,8 +649,11 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             primaryColor: widget.primaryColor,
             secondaryColor: widget.secondaryColor,
             enablePictureInPicture: widget.enablePictureInPicture,
-            initialPosition:
-                _lastNativeVideoPosition, // Pasar posición guardada
+            initialPosition: _lastNativeVideoPosition,
+            onVideoEnd: widget.onVideoEnd,
+            onVideoStart: widget.onVideoStart,
+            onVideoPause: widget.onVideoPause,
+            onVideoPlay: widget.onVideoPlay,
           ),
           fullscreenDialog: true,
         ),
@@ -618,6 +682,10 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             enableAirPlay: widget.enableAirPlay,
             videoTitle: widget.videoTitle,
             videoDescription: widget.videoDescription,
+            onVideoEnd: widget.onVideoEnd,
+            onVideoStart: widget.onVideoStart,
+            onVideoPause: widget.onVideoPause,
+            onVideoPlay: widget.onVideoPlay,
           ),
           fullscreenDialog: true,
         ),
@@ -629,6 +697,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         setState(() {
           _isPlaying = false;
         });
+        // El callback de pausa se llamará automáticamente por el listener
       }
     }
     _showControlsTemporarily();
@@ -657,6 +726,10 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
           enableAirPlay: widget.enableAirPlay,
           videoTitle: widget.videoTitle,
           videoDescription: widget.videoDescription,
+          onVideoEnd: widget.onVideoEnd,
+          onVideoStart: widget.onVideoStart,
+          onVideoPause: widget.onVideoPause,
+          onVideoPlay: widget.onVideoPlay,
         ),
         fullscreenDialog: true,
       ),
@@ -668,6 +741,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       setState(() {
         _isPlaying = false;
       });
+      // El callback de pausa se llamará automáticamente por el listener
     }
   }
 
@@ -1977,6 +2051,10 @@ class _NativeFullscreenPage extends StatefulWidget {
   final Color secondaryColor;
   final bool enablePictureInPicture;
   final double initialPosition; // Posición inicial del video en segundos
+  final VoidCallback? onVideoEnd;
+  final VoidCallback? onVideoStart;
+  final VoidCallback? onVideoPause;
+  final VoidCallback? onVideoPlay;
 
   const _NativeFullscreenPage({
     required this.url,
@@ -1984,6 +2062,10 @@ class _NativeFullscreenPage extends StatefulWidget {
     required this.secondaryColor,
     required this.enablePictureInPicture,
     this.initialPosition = 0.0, // Por defecto inicia en 0
+    this.onVideoEnd,
+    this.onVideoStart,
+    this.onVideoPause,
+    this.onVideoPlay,
   });
 
   @override
@@ -2000,6 +2082,13 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
   double _duration = 0.0;
   bool _isDragging = false;
   bool _isBuffering = true; // Inicia como true para mostrar loading inicial
+
+  // Para debounce de los botones de avanzar/retroceder
+  Timer? _seekDebounceTimer;
+  bool _isSeeking = false;
+  bool _hasVideoStarted =
+      false; // Para controlar si onVideoStart ya fue llamado
+  bool _hasVideoEnded = false; // Para controlar si onVideoEnd ya fue llamado
 
   @override
   void initState() {
@@ -2018,10 +2107,34 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
     _progressTimer?.cancel();
     _progressTimer =
         Timer.periodic(const Duration(milliseconds: 500), (timer) async {
-      if (_controller != null && !_isDragging) {
+      if (_controller != null && !_isDragging && !_isSeeking) {
         final position = await _controller!.getCurrentPosition();
         final duration = await _controller!.getDuration();
         final buffering = await _controller!.isBuffering();
+
+        // Verificar si el video terminó (con margen de tolerancia de 500ms)
+        final isNearEnd = duration > 0 && (position >= duration - 0.5);
+
+        if (isNearEnd && _isPlaying && !_hasVideoEnded) {
+          if (mounted) {
+            setState(() {
+              _isPlaying = false;
+              _hasVideoEnded = true;
+            });
+            debugPrint(
+                '[NativeFullscreenPage] 🏁 Video ended - Position: ${position.toStringAsFixed(1)}s, Duration: ${duration.toStringAsFixed(1)}s');
+            widget.onVideoEnd?.call();
+          }
+        }
+
+        // Detectar si el video está reproduciéndose y pasó de los primeros segundos
+        if (_isPlaying && !_hasVideoStarted && position >= 1.0) {
+          _hasVideoStarted = true;
+          debugPrint(
+              '[NativeFullscreenPage] ✨ Video started for first time (auto-detected at ${position.toStringAsFixed(1)}s)');
+          widget.onVideoStart?.call();
+        }
+
         if (mounted) {
           setState(() {
             _currentPosition = position;
@@ -2029,6 +2142,39 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
             _isBuffering = buffering;
           });
         }
+      }
+    });
+  }
+
+  /// Maneja el seek con debounce para permitir múltiples toques rápidos
+  void _performDebouncedSeek(double offsetSeconds) {
+    // Cancelar cualquier seek pendiente
+    _seekDebounceTimer?.cancel();
+
+    // Actualizar la posición visual inmediatamente (acumulando los offsets)
+    setState(() {
+      _currentPosition =
+          (_currentPosition + offsetSeconds).clamp(0.0, _duration);
+      _isSeeking = true;
+    });
+
+    // Programar el seek real después de 150ms de inactividad
+    _seekDebounceTimer = Timer(const Duration(milliseconds: 150), () async {
+      if (_controller != null) {
+        // Usar la posición visual acumulada (no obtener del video)
+        final targetPosition = _currentPosition;
+
+        // Ejecutar el seek a la posición visual acumulada
+        await _controller!.seek(targetPosition);
+
+        // Actualizar el estado
+        if (mounted) {
+          setState(() {
+            _isSeeking = false;
+          });
+        }
+
+        _startHideControlsTimer();
       }
     });
   }
@@ -2226,24 +2372,9 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                           // Retroceder 10 segundos
                           _buildCircularButton(
                             icon: Icons.replay_10,
-                            onPressed: () async {
+                            onPressed: () {
                               if (_controller != null) {
-                                setState(() =>
-                                    _isBuffering = true); // Mostrar loading
-
-                                // Obtener posición actual y retroceder 10 segundos
-                                final currentPos =
-                                    await _controller!.getCurrentPosition();
-                                final newPos =
-                                    (currentPos - 10).clamp(0.0, _duration);
-                                await _controller!.seek(newPos);
-
-                                setState(() => _currentPosition = newPos);
-                                _startHideControlsTimer();
-
-                                // Dar tiempo para que el player actualice su estado
-                                await Future.delayed(
-                                    const Duration(milliseconds: 300));
+                                _performDebouncedSeek(-10.0);
                               }
                             },
                           ),
@@ -2256,8 +2387,17 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                               if (_controller != null) {
                                 if (_isPlaying) {
                                   _controller!.pause();
+                                  // Callback de pausa (solo para reproductor nativo iOS)
+                                  widget.onVideoPause?.call();
                                 } else {
                                   _controller!.play();
+                                  // Callback de play (solo para reproductor nativo iOS)
+                                  widget.onVideoPlay?.call();
+                                  // Callback de inicio (solo la primera vez y solo para reproductor nativo iOS)
+                                  if (!_hasVideoStarted) {
+                                    _hasVideoStarted = true;
+                                    widget.onVideoStart?.call();
+                                  }
                                 }
                                 setState(() {
                                   _isPlaying = !_isPlaying;
@@ -2270,24 +2410,9 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                           // Avanzar 10 segundos
                           _buildCircularButton(
                             icon: Icons.forward_10,
-                            onPressed: () async {
+                            onPressed: () {
                               if (_controller != null) {
-                                setState(() =>
-                                    _isBuffering = true); // Mostrar loading
-
-                                // Obtener posición actual y avanzar 10 segundos
-                                final currentPos =
-                                    await _controller!.getCurrentPosition();
-                                final newPos =
-                                    (currentPos + 10).clamp(0.0, _duration);
-                                await _controller!.seek(newPos);
-
-                                setState(() => _currentPosition = newPos);
-                                _startHideControlsTimer();
-
-                                // Dar tiempo para que el player actualice su estado
-                                await Future.delayed(
-                                    const Duration(milliseconds: 300));
+                                _performDebouncedSeek(10.0);
                               }
                             },
                           ),
@@ -2430,6 +2555,7 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
   void dispose() {
     _hideControlsTimer?.cancel();
     _progressTimer?.cancel();
+    _seekDebounceTimer?.cancel();
     _controller?.dispose();
     // Restaurar orientación
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
