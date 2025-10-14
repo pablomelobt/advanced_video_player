@@ -666,6 +666,16 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         _lastNativeVideoPosition = result;
       }
 
+      // Pausar el video cuando se vuelve a la vista principal
+      if (_nativeController != null) {
+        await _nativeController!.pause();
+        setState(() {
+          _isPlaying = false;
+        });
+        debugPrint(
+            '[AdvancedVideoPlayer] ⏸️ Video pausado al volver a vista principal');
+      }
+
       return;
     }
 
@@ -983,8 +993,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             ),
           ),
 
-        // Video - Solo para reproductor nativo
-        if (_useNativePlayer)
+        // Video - Reproductor nativo (iOS) o estándar (Android)
+        // Solo mostrar el reproductor nativo cuando el video esté reproduciéndose
+        if (_useNativePlayer && _isPlaying)
           // Reproductor nativo con eventos PiP
           NativeVideoPlayer(
             url: widget.videoSource,
@@ -1019,6 +1030,56 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
                 _isInPictureInPictureMode = false;
               });
             },
+          )
+        // Reproductor nativo oculto para inicializar el controller
+        else if (_useNativePlayer && !_isPlaying)
+          // Reproductor nativo invisible para inicializar el controller
+          Opacity(
+            opacity: 0.0,
+            child: NativeVideoPlayer(
+              url: widget.videoSource,
+              autoplay: false,
+              onViewCreated: (controller) {
+                setState(() {
+                  _nativeController = controller;
+                  _isLoading = false;
+                  _isPictureInPictureSupported = true;
+                });
+              },
+              onPipStarted: () {
+                debugPrint(
+                    '[AdvancedVideoPlayer] ✅ PiP iniciado desde vista normal');
+                setState(() {
+                  _isInPictureInPictureMode = true;
+                });
+              },
+              onPipStopped: () {
+                debugPrint(
+                    '[AdvancedVideoPlayer] ⏹️ PiP detenido desde vista normal');
+                setState(() {
+                  _isInPictureInPictureMode = false;
+                });
+              },
+              onPipRestoreToFullscreen: () {
+                debugPrint(
+                    '[AdvancedVideoPlayer] 🎬 PiP cerrado - continuando en la MISMA vista');
+
+                // NO navegar a ningún lado, el video continúa en la misma vista
+                setState(() {
+                  _isInPictureInPictureMode = false;
+                });
+              },
+            ),
+          )
+        else if (!_isLoading &&
+            _controller != null &&
+            _controller!.value.isInitialized)
+          // Reproductor estándar para Android (solo cuando está inicializado)
+          Center(
+            child: AspectRatio(
+              aspectRatio: _controller!.value.aspectRatio,
+              child: VideoPlayer(_controller!),
+            ),
           ),
 
         // Overlay para reproductor nativo con botón de play
