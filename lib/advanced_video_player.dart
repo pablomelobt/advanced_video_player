@@ -2180,6 +2180,22 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                   _controller = controller;
                 });
 
+                // Sincronizar el estado de reproducción con el reproductor nativo
+                // Esto es especialmente importante cuando se vuelve desde PIP
+                try {
+                  final playing = await controller.isPlaying();
+                  if (mounted) {
+                    setState(() {
+                      _isPlaying = playing;
+                    });
+                    debugPrint(
+                        '[NativeFullscreenPage] 🎵 Estado de reproducción sincronizado: $_isPlaying');
+                  }
+                } catch (e) {
+                  debugPrint(
+                      '[NativeFullscreenPage] ⚠️ Error al sincronizar estado de reproducción: $e');
+                }
+
                 // Si hay una posición inicial, hacer seek a esa posición
                 if (widget.initialPosition > 0) {
                   await Future.delayed(const Duration(
@@ -2194,13 +2210,45 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
               onPipStarted: () {
                 debugPrint('[NativeFullscreenPage] ✅ PiP iniciado');
               },
-              onPipStopped: () {
+              onPipStopped: () async {
                 debugPrint('[NativeFullscreenPage] ⏹️ PiP detenido');
+                // Sincronizar el estado de reproducción después de cerrar PIP
+                if (_controller != null) {
+                  try {
+                    final playing = await _controller!.isPlaying();
+                    if (mounted) {
+                      setState(() {
+                        _isPlaying = playing;
+                      });
+                      debugPrint(
+                          '[NativeFullscreenPage] 🎵 Estado sincronizado después de PIP: $_isPlaying');
+                    }
+                  } catch (e) {
+                    debugPrint(
+                        '[NativeFullscreenPage] ⚠️ Error al sincronizar después de PIP: $e');
+                  }
+                }
               },
-              onPipRestoreToFullscreen: () {
+              onPipRestoreToFullscreen: () async {
                 debugPrint(
                     '[NativeFullscreenPage] 🎬 Restaurando a fullscreen desde PiP');
                 // Ya estamos en fullscreen, no necesitamos navegar
+                // Pero sí necesitamos sincronizar el estado de reproducción
+                if (_controller != null) {
+                  try {
+                    final playing = await _controller!.isPlaying();
+                    if (mounted) {
+                      setState(() {
+                        _isPlaying = playing;
+                      });
+                      debugPrint(
+                          '[NativeFullscreenPage] 🎵 Estado sincronizado al restaurar desde PIP: $_isPlaying');
+                    }
+                  } catch (e) {
+                    debugPrint(
+                        '[NativeFullscreenPage] ⚠️ Error al sincronizar al restaurar desde PIP: $e');
+                  }
+                }
               },
             ),
 
@@ -2351,8 +2399,24 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                           _buildCircularButton(
                             icon: _isPlaying ? Icons.pause : Icons.play_arrow,
                             size: 70,
-                            onPressed: () {
+                            onPressed: () async {
                               if (_controller != null) {
+                                // Primero sincronizar con el estado real del reproductor
+                                try {
+                                  final actuallyPlaying =
+                                      await _controller!.isPlaying();
+                                  // Actualizar el estado local con el estado real
+                                  if (mounted) {
+                                    setState(() {
+                                      _isPlaying = actuallyPlaying;
+                                    });
+                                  }
+                                } catch (e) {
+                                  debugPrint(
+                                      '[NativeFullscreenPage] ⚠️ Error al sincronizar estado antes de toggle: $e');
+                                }
+
+                                // Ahora hacer el toggle con el estado sincronizado
                                 if (_isPlaying) {
                                   _controller!.pause();
                                   // Callback de pausa (solo para reproductor nativo iOS)

@@ -683,6 +683,11 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
         return bufferEmpty && !likelyToKeepUp
     }
     
+    func isPlaying() -> Bool {
+        guard let player = player else { return false }
+        return player.rate > 0
+    }
+    
     override func layoutSubviews() {
         super.layoutSubviews()
         playerLayer?.frame = bounds
@@ -933,6 +938,9 @@ class PlayerViewWrapper: NSObject, FlutterPlatformView {
             
         case "isBuffering":
             result(playerView.isBuffering())
+            
+        case "isPlaying":
+            result(playerView.isPlaying())
             
         default:
             result(FlutterMethodNotImplemented)

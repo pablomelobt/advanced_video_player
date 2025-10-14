@@ -252,6 +252,17 @@ class NativeVideoPlayerController {
     }
   }
 
+  /// Verifica si el video está reproduciéndose
+  Future<bool> isPlaying() async {
+    try {
+      final playing = await _methodChannel.invokeMethod('isPlaying');
+      return playing as bool? ?? false;
+    } catch (e) {
+      debugPrint('[NativeVideoPlayer] Error al verificar reproducción: $e');
+      return false;
+    }
+  }
+
   /// Limpia los recursos
   void dispose() {
     // Cleanup si es necesario
