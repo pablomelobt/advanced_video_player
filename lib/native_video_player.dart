@@ -53,26 +53,50 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
     _eventChannel =
         EventChannel('advanced_video_player/native_view_events_$viewId');
     _eventChannel!.receiveBroadcastStream().listen((dynamic event) {
+      debugPrint('[NativeVideoPlayer] 🔔 Evento recibido completo: $event');
+
       if (event is Map) {
         final eventType = event['event'] as String?;
-        debugPrint('[NativeVideoPlayer] Evento recibido: $eventType');
+        final viewId = event['viewId'];
+        debugPrint(
+            '[NativeVideoPlayer] 📱 Evento: $eventType, ViewId: $viewId');
 
         switch (eventType) {
           case 'pip_started':
+            debugPrint(
+                '[NativeVideoPlayer] ✅ PiP iniciado - llamando callback');
             widget.onPipStarted?.call();
             break;
           case 'pip_stopped':
+            debugPrint(
+                '[NativeVideoPlayer] ⏹️ PiP detenido - llamando callback');
             widget.onPipStopped?.call();
             break;
-          case 'pip_restore_to_fullscreen':
+          case 'pip_restore_fullscreen':
+            final reason = event['reason'] as String? ?? 'unknown';
             debugPrint(
-                '[NativeVideoPlayer] 🎬 Usuario volvió desde PiP → navegando a fullscreen');
+                '[NativeVideoPlayer] 🎬 Restaurando fullscreen desde PiP (razón: $reason) - llamando callback');
             widget.onPipRestoreToFullscreen?.call();
             break;
+          case 'pip_will_start':
+            debugPrint('[NativeVideoPlayer] 🎥 PiP por iniciar...');
+            break;
+          case 'pip_will_stop':
+            debugPrint('[NativeVideoPlayer] ⏹️ PiP por detener...');
+            break;
+          case 'pip_error':
+            final message = event['message'] as String? ?? 'Error desconocido';
+            debugPrint('[NativeVideoPlayer] ❌ Error en PiP: $message');
+            break;
+          default:
+            debugPrint('[NativeVideoPlayer] ❓ Evento desconocido: $eventType');
         }
+      } else {
+        debugPrint(
+            '[NativeVideoPlayer] ⚠️ Evento no es un Map: $event (tipo: ${event.runtimeType})');
       }
     }, onError: (dynamic error) {
-      debugPrint('[NativeVideoPlayer] Error en stream de eventos: $error');
+      debugPrint('[NativeVideoPlayer] ❌ Error en stream de eventos: $error');
     });
   }
 
@@ -231,5 +255,26 @@ class NativeVideoPlayerController {
   /// Limpia los recursos
   void dispose() {
     // Cleanup si es necesario
+  }
+
+  /// Limpia el cache de players compartidos (iOS solamente)
+  ///
+  /// Este método libera todos los players compartidos que mantienen
+  /// el estado entre navegaciones. Úsalo cuando quieras liberar memoria
+  /// o cuando cambies completamente de contexto en tu aplicación.
+  ///
+  /// Nota: Después de llamar este método, los videos volverán a empezar
+  /// desde el inicio la próxima vez que se reproduzcan.
+  static Future<bool> clearSharedPlayersCache() async {
+    try {
+      const channel = MethodChannel('advanced_video_player');
+      final result = await channel.invokeMethod('clearNativePlayersCache');
+      debugPrint(
+          '[NativeVideoPlayer] 🧹 Cache de players compartidos limpiado: $result');
+      return result as bool? ?? false;
+    } catch (e) {
+      debugPrint('[NativeVideoPlayer] Error al limpiar cache: $e');
+      return false;
+    }
   }
 }

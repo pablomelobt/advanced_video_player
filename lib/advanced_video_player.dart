@@ -395,17 +395,19 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
       // Si usamos el reproductor nativo, no inicializamos el VideoPlayerController
       if (_useNativePlayer) {
-        // El NativeVideoPlayer se inicializa en fullscreen
+        // El NativeVideoPlayer se muestra en la vista normal también
         setState(() {
           _isLoading = false;
         });
 
-        // Auto-abrir en fullscreen
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted) {
-            _toggleFullscreen();
-          }
-        });
+        // Auto-abrir en fullscreen SI está habilitado
+        if (widget.autoEnterFullscreen) {
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted) {
+              _toggleFullscreen();
+            }
+          });
+        }
         return;
       }
 
@@ -848,6 +850,18 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     }
   }
 
+  void _startHideControlsTimer() {
+    _hideControlsTimer?.cancel();
+    _hideControlsTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _isPlaying) {
+        setState(() {
+          _showControls = false;
+        });
+        _controlsAnimationController.reverse();
+      }
+    });
+  }
+
   void _onTapVideo() {
     if (_showControls) {
       setState(() {
@@ -969,10 +983,73 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             ),
           ),
 
-        // Video - Solo para reproductor nativo (placeholder)
+        // Video - Solo para reproductor nativo
         if (_useNativePlayer)
-          // Para reproductor nativo: mostrar placeholder y botón para abrir fullscreen
-          _buildNativePlaceholder(),
+          // Reproductor nativo con eventos PiP
+          NativeVideoPlayer(
+            url: widget.videoSource,
+            autoplay: false,
+            onViewCreated: (controller) {
+              setState(() {
+                _nativeController = controller;
+                _isLoading = false;
+                _isPictureInPictureSupported = true;
+              });
+            },
+            onPipStarted: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] ✅ PiP iniciado desde vista normal');
+              setState(() {
+                _isInPictureInPictureMode = true;
+              });
+            },
+            onPipStopped: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] ⏹️ PiP detenido desde vista normal');
+              setState(() {
+                _isInPictureInPictureMode = false;
+              });
+            },
+            onPipRestoreToFullscreen: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] 🎬 PiP cerrado - continuando en la MISMA vista');
+
+              // NO navegar a ningún lado, el video continúa en la misma vista
+              setState(() {
+                _isInPictureInPictureMode = false;
+              });
+            },
+          ),
+
+        // Overlay para reproductor nativo con botón de play
+        if (_useNativePlayer && !_isPlaying)
+          GestureDetector(
+            onTap: _toggleFullscreen,
+            child: Container(
+              color: Colors.transparent,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: widget.primaryColor.withOpacity(0.9),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 20,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    size: 60,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
 
         // Indicador de carga cuando está inicializando (solo si no hay preview)
         if (!_useNativePlayer &&
@@ -1042,154 +1119,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     );
   }
 
-  Widget _buildNativePlaceholder() {
-    return GestureDetector(
-      onTap: () {
-        _toggleFullscreen();
-      },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Fondo: Preview/thumbnail o gradiente
-          if (widget.previewImageUrl != null &&
-              widget.previewImageUrl!.isNotEmpty)
-            Image.network(
-              widget.previewImageUrl!,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [widget.primaryColor, widget.secondaryColor],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                );
-              },
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [widget.primaryColor, widget.secondaryColor],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      value: loadingProgress.expectedTotalBytes != null
-                          ? loadingProgress.cumulativeBytesLoaded /
-                              loadingProgress.expectedTotalBytes!
-                          : null,
-                      valueColor:
-                          const AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  ),
-                );
-              },
-            )
-          else
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [widget.primaryColor, widget.secondaryColor],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
-
-          // Overlay oscuro sutil para mejorar visibilidad del botón
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withOpacity(0.2),
-                  Colors.transparent,
-                  Colors.transparent,
-                  Colors.black.withOpacity(0.4),
-                ],
-              ),
-            ),
-          ),
-
-          // Botón de play centrado
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: widget.primaryColor.withOpacity(0.9),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 20,
-                    spreadRadius: 5,
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.play_arrow,
-                size: 60,
-                color: Colors.white,
-              ),
-            ),
-          ),
-
-          // Título del video (si está disponible)
-          if (widget.videoTitle != null)
-            Positioned(
-              bottom: 20,
-              left: 20,
-              right: 20,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.videoTitle!,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black,
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (widget.videoDescription != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      widget.videoDescription!,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: 14,
-                        shadows: const [
-                          Shadow(
-                            color: Colors.black,
-                            blurRadius: 10,
-                          ),
-                        ],
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildFullscreenVideo() {
     return Stack(
       fit: StackFit.expand,
@@ -1209,6 +1138,34 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
                   _isPictureInPictureSupported = true;
                 });
               }
+            },
+            onPipStarted: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] ✅ PiP iniciado - actualizando estado');
+              setState(() {
+                _isInPictureInPictureMode = true;
+              });
+            },
+            onPipStopped: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] ⏹️ PiP detenido - actualizando estado');
+              setState(() {
+                _isInPictureInPictureMode = false;
+              });
+            },
+            onPipRestoreToFullscreen: () {
+              debugPrint(
+                  '[AdvancedVideoPlayer] 🎬 PiP cerrado en fullscreen - continuando en la MISMA vista');
+
+              // NO navegar a ningún lado, solo cerrar el PiP y continuar
+              setState(() {
+                _isInPictureInPictureMode = false;
+                _showControls = true;
+              });
+
+              // Reiniciar el timer de ocultar controles
+              _hideControlsTimer?.cancel();
+              _startHideControlsTimer();
             },
           )
         else if (_isLoading ||
@@ -2233,6 +2190,17 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                     _isBuffering = true; // Mostrar loading mientras busca
                   });
                 }
+              },
+              onPipStarted: () {
+                debugPrint('[NativeFullscreenPage] ✅ PiP iniciado');
+              },
+              onPipStopped: () {
+                debugPrint('[NativeFullscreenPage] ⏹️ PiP detenido');
+              },
+              onPipRestoreToFullscreen: () {
+                debugPrint(
+                    '[NativeFullscreenPage] 🎬 Restaurando a fullscreen desde PiP');
+                // Ya estamos en fullscreen, no necesitamos navegar
               },
             ),
 
