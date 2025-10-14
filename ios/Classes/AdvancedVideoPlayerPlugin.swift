@@ -416,7 +416,8 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
         self.viewId = viewId
         self.messenger = messenger
         super.init(frame: frame)
-        backgroundColor = .black
+        // Inicialmente transparente para mostrar la imagen de preview detrás
+        backgroundColor = .clear
         
         // Configurar el event channel para esta vista específica
         eventChannel = FlutterEventChannel(name: "advanced_video_player/native_view_events_\(viewId)", binaryMessenger: messenger)
@@ -553,6 +554,12 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
                 print("[PlayerView] ▶️ Reanudando reproducción desde posición actual")
             }
             
+            // Si el player ya tiene contenido, hacer el fondo negro
+            if let currentItem = sharedPlayer.currentItem,
+               currentItem.status == .readyToPlay {
+                backgroundColor = .black
+            }
+            
             return
         }
         
@@ -575,6 +582,16 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
         // Agregar layer a la vista
         layer.addSublayer(newLayer)
         newLayer.frame = bounds
+        
+        // Observar cuando el player esté listo para cambiar el fondo a negro
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemNewAccessLogEntry,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            // Cambiar el fondo a negro cuando el video empiece a cargar frames
+            self?.backgroundColor = .black
+        }
         
         // Configurar audio session
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
