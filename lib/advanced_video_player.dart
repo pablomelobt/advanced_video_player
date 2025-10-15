@@ -70,6 +70,8 @@ class AdvancedVideoPlayer extends StatefulWidget {
   /// Si se proporciona, se mostrará mientras el video carga
   final String? previewImageUrl;
 
+  final Widget? playButton;
+
   const AdvancedVideoPlayer({
     super.key,
     required this.videoSource,
@@ -90,6 +92,7 @@ class AdvancedVideoPlayer extends StatefulWidget {
     this.useNativePlayerOnIOS = false,
     this.autoEnterFullscreen = false,
     this.previewImageUrl,
+    this.playButton,
   });
 
   @override
@@ -1089,25 +1092,26 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             child: Container(
               color: Colors.transparent,
               child: Center(
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: widget.primaryColor.withOpacity(0.9),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 5,
+                child: widget.playButton ??
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: widget.primaryColor.withOpacity(0.9),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 20,
+                            spreadRadius: 5,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow,
-                    size: 60,
-                    color: Colors.white,
-                  ),
-                ),
+                      child: const Icon(
+                        Icons.play_arrow,
+                        size: 30,
+                        color: Colors.white,
+                      ),
+                    ),
               ),
             ),
           ),
