@@ -531,12 +531,13 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
             ///
             /// Describe la funcionalidad PiP que permite ver el video en
             /// una ventana flotante mientras se usa otras aplicaciones.
+            /// En iOS muestra una vista personalizada con icono y texto (estilo Disney+).
             /// Incluye requisitos de versión del sistema operativo.
             _buildFeatureCard(
               icon: Icons.picture_in_picture_alt,
               title: 'Picture-in-Picture',
               description:
-                  'Ve videos en ventana flotante mientras usas otras apps (Android 8.0+ / iOS 14+)',
+                  'Ve videos en ventana flotante mientras usas otras apps. En iOS muestra vista personalizada con icono y texto (Android 8.0+ / iOS 14+)',
               color: const Color(0xFFEC4899),
             ),
 

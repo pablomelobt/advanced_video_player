@@ -70,6 +70,8 @@ class AdvancedVideoPlayer extends StatefulWidget {
   /// Si se proporciona, se mostrará mientras el video carga
   final String? previewImageUrl;
 
+  final Widget? playButton;
+
   const AdvancedVideoPlayer({
     super.key,
     required this.videoSource,
@@ -90,6 +92,7 @@ class AdvancedVideoPlayer extends StatefulWidget {
     this.useNativePlayerOnIOS = false,
     this.autoEnterFullscreen = false,
     this.previewImageUrl,
+    this.playButton,
   });
 
   @override
@@ -994,12 +997,11 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
           ),
 
         // Video - Reproductor nativo (iOS) o estándar (Android)
-        // Solo mostrar el reproductor nativo cuando el video esté reproduciéndose
         if (_useNativePlayer && _isPlaying)
-          // Reproductor nativo con eventos PiP
+          // Reproductor nativo con eventos PiP - solo cuando está reproduciendo
           NativeVideoPlayer(
             url: widget.videoSource,
-            autoplay: false,
+            autoplay: true,
             onViewCreated: (controller) {
               setState(() {
                 _nativeController = controller;
@@ -1031,38 +1033,39 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
               });
             },
           )
-        // Reproductor nativo oculto para inicializar el controller
+        // Reproductor nativo invisible para inicializar el controller cuando no está reproduciendo
         else if (_useNativePlayer && !_isPlaying)
-          // Reproductor nativo invisible para inicializar el controller
+          // Reproductor nativo invisible para mantener el controller disponible
           Opacity(
             opacity: 0.0,
             child: NativeVideoPlayer(
               url: widget.videoSource,
               autoplay: false,
               onViewCreated: (controller) {
-                setState(() {
-                  _nativeController = controller;
-                  _isLoading = false;
-                  _isPictureInPictureSupported = true;
-                });
+                if (_nativeController == null) {
+                  setState(() {
+                    _nativeController = controller;
+                    _isPictureInPictureSupported = true;
+                  });
+                }
               },
               onPipStarted: () {
                 debugPrint(
-                    '[AdvancedVideoPlayer] ✅ PiP iniciado desde vista normal');
+                    '[AdvancedVideoPlayer] ✅ PiP iniciado desde vista normal (invisible)');
                 setState(() {
                   _isInPictureInPictureMode = true;
                 });
               },
               onPipStopped: () {
                 debugPrint(
-                    '[AdvancedVideoPlayer] ⏹️ PiP detenido desde vista normal');
+                    '[AdvancedVideoPlayer] ⏹️ PiP detenido desde vista normal (invisible)');
                 setState(() {
                   _isInPictureInPictureMode = false;
                 });
               },
               onPipRestoreToFullscreen: () {
                 debugPrint(
-                    '[AdvancedVideoPlayer] 🎬 PiP cerrado - continuando en la MISMA vista');
+                    '[AdvancedVideoPlayer] 🎬 PiP cerrado - continuando en la MISMA vista (invisible)');
 
                 // NO navegar a ningún lado, el video continúa en la misma vista
                 setState(() {
@@ -1071,6 +1074,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
               },
             ),
           )
+        // Reproductor estándar para Android
         else if (!_isLoading &&
             _controller != null &&
             _controller!.value.isInitialized)
@@ -1089,25 +1093,27 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             child: Container(
               color: Colors.transparent,
               child: Center(
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: widget.primaryColor.withOpacity(0.9),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 5,
+                child: widget.playButton ??
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: widget.primaryColor.withOpacity(0.9),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color.fromARGB(255, 255, 0, 0)
+                                .withOpacity(0.3),
+                            blurRadius: 20,
+                            spreadRadius: 5,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow,
-                    size: 60,
-                    color: Colors.white,
-                  ),
-                ),
+                      child: const Icon(
+                        Icons.play_arrow,
+                        size: 30,
+                        color: Colors.white,
+                      ),
+                    ),
               ),
             ),
           ),
@@ -1176,6 +1182,26 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
               );
             },
           ),
+
+        // Overlay de Picture-in-Picture cuando está activo
+        if (_isInPictureInPictureMode) ...[
+          // Debug: Mostrar estado actual
+          Positioned(
+            top: 50,
+            left: 20,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                'PiP: $_isInPictureInPictureMode',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1256,6 +1282,26 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
               );
             },
           ),
+
+        // Overlay de Picture-in-Picture cuando está activo en pantalla completa
+        if (_isInPictureInPictureMode) ...[
+          // Debug: Mostrar estado actual
+          Positioned(
+            top: 50,
+            left: 20,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                'PiP Fullscreen: $_isInPictureInPictureMode',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

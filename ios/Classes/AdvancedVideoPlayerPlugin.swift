@@ -11,6 +11,7 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
     private var playerViewController: AVPlayerViewController?
 
     private var pipContainerView: UIView?
+    private var pipOverlayView: PiPOverlayView?
 
     // Propiedades para restaurar el layer original
     private weak var originalLayerSuperlayer: CALayer?
@@ -225,6 +226,9 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
             }
         }
         
+        // Mostrar la vista personalizada de PiP
+        showPiPOverlay()
+        
         sendPiPEvent(["event": "pip_started"])
         
 
@@ -283,10 +287,16 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
 
     public func pictureInPictureControllerWillStopPictureInPicture(_ controller: AVPictureInPictureController) {
         print("[DEBUG] ⏹️ PiP se detendrá pronto")
+        
+        // Ocultar la vista personalizada inmediatamente cuando se detecta que PiP va a detenerse
+        hidePiPOverlay()
     }
 
     public func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         print("[DEBUG] 🧩 PiP detenido - restaurando layer original...")
+
+        // Ocultar la vista personalizada de PiP
+        hidePiPOverlay()
 
         // Detener PiP limpio
         pipController?.delegate = nil
@@ -318,6 +328,43 @@ public class AdvancedVideoPlayerPlugin: NSObject, FlutterPlugin, AVPictureInPict
 
     private func sendPiPEvent(_ data: [String: Any]) {
         PiPEvents.shared.send(data)
+    }
+    
+    // MARK: - PiP Overlay Methods
+    
+    private func showPiPOverlay() {
+        DispatchQueue.main.async {
+            // Obtener la ventana principal
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let window = windowScene.windows.first else {
+                print("[DEBUG] ❌ No se pudo obtener la ventana principal para mostrar overlay de PiP")
+                return
+            }
+            
+            // Crear la vista de overlay si no existe
+            if self.pipOverlayView == nil {
+                self.pipOverlayView = PiPOverlayView(frame: window.bounds)
+            }
+            
+            // Agregar la vista a la ventana si no está ya agregada
+            if let overlayView = self.pipOverlayView, overlayView.superview == nil {
+                window.addSubview(overlayView)
+                overlayView.show()
+                print("[DEBUG] ✅ Vista personalizada de PiP mostrada")
+            }
+        }
+    }
+    
+    private func hidePiPOverlay() {
+        DispatchQueue.main.async {
+            guard let overlayView = self.pipOverlayView else { return }
+            
+            // Ocultar inmediatamente sin animación para evitar el parpadeo
+            overlayView.alpha = 0
+            overlayView.removeFromSuperview()
+            self.pipOverlayView = nil
+            print("[DEBUG] ✅ Vista personalizada de PiP ocultada inmediatamente")
+        }
     }
 }
 
@@ -405,6 +452,7 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
     private var eventChannel: FlutterEventChannel?
     private var eventSink: FlutterEventSink?
     var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    private var pipOverlayView: PiPOverlayView?
     
     // 🌐 Players compartidos para mantener estado entre navegaciones
     static var sharedNativePlayers: [String: AVPlayer] = [:]
@@ -721,6 +769,10 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
         print("[PlayerView] ✅ PiP iniciado")
         // Ocultar la vista principal al entrar en PiP
         self.isHidden = true
+        
+        // Mostrar la vista personalizada de PiP
+        showPiPOverlay()
+        
         sendEvent(["event": "pip_started"])
         
         // 💫 Enviar app al background automáticamente (estilo Disney+)
@@ -732,11 +784,19 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
     
     func pictureInPictureControllerWillStopPictureInPicture(_ controller: AVPictureInPictureController) {
         print("[PlayerView] ⏹️ PiP deteniéndose...")
+        
+        // Ocultar la vista personalizada inmediatamente cuando se detecta que PiP va a detenerse
+        hidePiPOverlay()
+        
         sendEvent(["event": "pip_will_stop"])
     }
     
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         print("[PlayerView] 🔁 PiP detenido - restaurando vista original")
+        
+        // Ocultar la vista personalizada de PiP
+        hidePiPOverlay()
+        
         // Volver a mostrar la vista original al salir del PiP
         self.isHidden = false
         sendEvent(["event": "pip_stopped"])
@@ -770,11 +830,52 @@ class PlayerView: UIView, AVPictureInPictureControllerDelegate {
         eventSink?(eventData)
     }
     
+    // MARK: - PiP Overlay Methods
+    
+    private func showPiPOverlay() {
+        DispatchQueue.main.async {
+            // Obtener la ventana principal
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let window = windowScene.windows.first else {
+                print("[PlayerView] ❌ No se pudo obtener la ventana principal para mostrar overlay de PiP")
+                return
+            }
+            
+            // Crear la vista de overlay si no existe
+            if self.pipOverlayView == nil {
+                self.pipOverlayView = PiPOverlayView(frame: window.bounds)
+            }
+            
+            // Agregar la vista a la ventana si no está ya agregada
+            if let overlayView = self.pipOverlayView, overlayView.superview == nil {
+                window.addSubview(overlayView)
+                overlayView.show()
+                print("[PlayerView] ✅ Vista personalizada de PiP mostrada")
+            }
+        }
+    }
+    
+    private func hidePiPOverlay() {
+        DispatchQueue.main.async {
+            guard let overlayView = self.pipOverlayView else { return }
+            
+            // Ocultar inmediatamente sin animación para evitar el parpadeo
+            overlayView.alpha = 0
+            overlayView.removeFromSuperview()
+            self.pipOverlayView = nil
+            print("[PlayerView] ✅ Vista personalizada de PiP ocultada inmediatamente")
+        }
+    }
+    
     deinit {
         print("[PlayerView] 🗑️ Limpiando player view - MANTENIENDO player compartido en memoria")
         
         // Limpiar notificaciones
         NotificationCenter.default.removeObserver(self)
+        
+        // Limpiar vista de overlay de PiP
+        pipOverlayView?.removeFromSuperview()
+        pipOverlayView = nil
         
         // 🚨 IMPORTANTE: NO destruir el player ni el layer compartidos
         // Solo remover el layer de esta vista para que pueda ser agregado a otra
