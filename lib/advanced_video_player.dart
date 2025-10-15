@@ -1077,8 +1077,10 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         // Reproductor estándar para Android
         else if (!_isLoading &&
             _controller != null &&
-            _controller!.value.isInitialized)
-          // Reproductor estándar para Android (solo cuando está inicializado)
+            _controller!.value.isInitialized &&
+            // No mostrar VideoPlayer si hay preview disponible
+            (widget.previewImageUrl == null || widget.previewImageUrl!.isEmpty))
+          // Reproductor estándar para Android (solo cuando está inicializado y no hay preview)
           Center(
             child: AspectRatio(
               aspectRatio: _controller!.value.aspectRatio,

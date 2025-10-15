@@ -34,7 +34,7 @@ Agrega esta dependencia a tu archivo `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  advanced_video_player: ^0.0.3
+  advanced_video_player: ^1.0.0
 ```
 
 Luego ejecuta:
@@ -276,7 +276,9 @@ AdvancedVideoPlayer(
 
 ### Picture-in-Picture (PiP)
 
-El reproductor soporta Picture-in-Picture nativo en ambas plataformas:
+El reproductor soporta Picture-in-Picture nativo en ambas plataformas con una experiencia mejorada:
+
+**🎨 Vista Personalizada en iOS**: Cuando se activa PiP en iOS, se muestra una vista personalizada con icono y texto (similar a Disney+) en lugar de una pantalla negra. La vista incluye un icono de dos rectángulos superpuestos y el texto "Video reproduciéndose en imagen dentro de otra (PIP)."
 
 ```dart
 AdvancedVideoPlayer(

@@ -1,3 +1,38 @@
+## 1.0.0 - 2025-01-27
+
+### 🎨 Vista Personalizada de Picture-in-Picture para iOS
+
+Esta versión introduce una vista personalizada que se muestra durante el modo Picture-in-Picture en iOS, similar al estilo de Disney+ y otras apps premium.
+
+### ✨ Nuevas Características
+
+#### 🖼️ Vista Personalizada de PiP en iOS
+- ✅ **Vista personalizada**: Muestra icono y texto durante PiP en lugar de pantalla negra
+- ✅ **Diseño estilo Disney+**: Icono de dos rectángulos superpuestos con texto descriptivo
+- ✅ **Animaciones suaves**: Transiciones elegantes al mostrar/ocultar la vista
+- ✅ **Ocultación inteligente**: Se oculta inmediatamente al salir del PiP sin parpadeos
+- ✅ **Texto en español**: "Video reproduciéndose en imagen dentro de otra (PIP)."
+
+#### 🔧 Mejoras Técnicas
+- ✅ **Integración nativa**: Funciona con ambos reproductores (tradicional y nativo)
+- ✅ **Sin impacto en rendimiento**: Vista ligera que no afecta la reproducción
+- ✅ **Compatibilidad total**: Funciona con todas las funcionalidades existentes
+- ✅ **Código limpio**: Implementación modular y mantenible
+
+### 🐛 Correcciones
+- ✅ **Parpadeo en PiP**: Eliminado el parpadeo al volver desde PiP
+- ✅ **Ocultación inmediata**: La vista se oculta instantáneamente al detectar fin de PiP
+- ✅ **Vista negra en Android PiP**: Eliminada la vista negra que se mostraba durante PiP en Android
+- ✅ **Reproductor encima del preview en Android**: Corregido el problema donde el VideoPlayer se mostraba encima del preview/thumbnail
+
+### 📱 Compatibilidad
+- **iOS**: 13.0+ (requerido para la vista personalizada)
+- **Android**: Sin cambios (funcionalidad PiP existente)
+- **Flutter**: >=1.17.0
+- **Dart**: >=3.4.4
+
+---
+
 ## 0.0.3 - 2025-10-09
 
 ### 🎯 Versión Release Estable

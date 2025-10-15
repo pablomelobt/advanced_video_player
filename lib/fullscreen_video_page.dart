@@ -514,8 +514,10 @@ class _FullscreenVideoPageState extends State<FullscreenVideoPage>
             ),
 
             // Indicador de carga cuando el video está inicializando o buffering
-            if (!widget.controller.value.isInitialized ||
-                widget.controller.value.isBuffering)
+            // En Android, no mostrar vista negra durante PiP
+            if ((!widget.controller.value.isInitialized ||
+                    widget.controller.value.isBuffering) &&
+                !(Platform.isAndroid && _isInPictureInPictureMode))
               Container(
                 color: Colors.black.withOpacity(0.6),
                 child: Center(
