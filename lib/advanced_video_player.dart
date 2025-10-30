@@ -124,6 +124,8 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
   bool _hasVideoStarted =
       false; // Para controlar si onVideoStart ya fue llamado
   bool _hasVideoEnded = false; // Para controlar si onVideoEnd ya fue llamado
+  bool _didResetAfterEnd =
+      false; // Para controlar si ya se hizo reset al final real
 
   // Getter para saber si estamos usando el reproductor nativo
   bool get _useNativePlayer => widget.useNativePlayerOnIOS && Platform.isIOS;
@@ -205,8 +207,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
   void _handlePipControlEvent(String action) {
     if (!mounted) return;
-
-    debugPrint('[AdvancedVideoPlayer] Control PiP recibido: $action');
 
     // Si es reproductor nativo
     if (widget.useNativePlayerOnIOS && _nativeController != null) {
@@ -493,22 +493,39 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       return;
     }
 
-    // Verificar si el video terminó (con margen de tolerancia de 500ms)
+    // Verificar estados de final: 10s antes (para callback) y final real (<=500ms)
     final duration = _controller!.value.duration;
     final position = _controller!.value.position;
-    final isNearEnd = duration.inMilliseconds > 0 &&
-        (position.inMilliseconds >= duration.inMilliseconds - 500);
+    final remaining = duration - position;
+    final isActualEnd =
+        duration.inMilliseconds > 0 && (remaining.inMilliseconds <= 500);
+    final isTenSecondsBeforeEnd =
+        duration.inMilliseconds > 0 && (remaining.inSeconds <= 10);
 
-    if (isNearEnd && _isPlaying && !_hasVideoEnded) {
+    // Final real: resetear a 00:00 y pausar (una sola vez)
+    if (isActualEnd && !_didResetAfterEnd) {
       setState(() {
         _isPlaying = false;
-        _hasVideoEnded = true;
+        _didResetAfterEnd = true;
       });
       _updatePipPlaybackState(false);
-      debugPrint(
-          '[AdvancedVideoPlayer] 🏁 Video ended - Position: ${position.inSeconds}s, Duration: ${duration.inSeconds}s');
-      widget.onVideoEnd?.call();
+
+      if (_controller != null && _controller!.value.isInitialized) {
+        _controller!.seekTo(Duration.zero);
+        _controller!.pause();
+        setState(() {
+          _isPlaying = false;
+          // no tocamos _hasVideoEnded aquí; ese flag controla el callback 10s antes
+        });
+        _updatePipPlaybackState(false);
+      }
       return;
+    }
+
+    // 10s antes del final: disparar onVideoEnd solo una vez
+    if (isTenSecondsBeforeEnd && !_hasVideoEnded && _isPlaying) {
+      _hasVideoEnded = true;
+      widget.onVideoEnd?.call();
     }
 
     final newPlayingState = _controller!.value.isPlaying;
@@ -516,8 +533,7 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
     // Detectar si el video está reproduciéndose y pasó de los primeros segundos
     if (newPlayingState && !_hasVideoStarted && position.inSeconds >= 1) {
       _hasVideoStarted = true;
-      debugPrint(
-          '[AdvancedVideoPlayer] ✨ Video started for first time (auto-detected at ${position.inSeconds}s)');
+
       widget.onVideoStart?.call();
     }
 
@@ -530,18 +546,16 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
       // Callbacks basados en el cambio de estado
       if (newPlayingState) {
         // El video comenzó a reproducirse
-        debugPrint('[AdvancedVideoPlayer] 🎬 Video playing');
+
         widget.onVideoPlay?.call();
 
         // Si es la primera vez, llamar onVideoStart
         if (!_hasVideoStarted) {
           _hasVideoStarted = true;
-          debugPrint('[AdvancedVideoPlayer] ✨ Video started for first time');
           widget.onVideoStart?.call();
         }
       } else {
         // El video se pausó
-        debugPrint('[AdvancedVideoPlayer] ⏸️ Video paused');
         widget.onVideoPause?.call();
       }
     }
@@ -579,6 +593,9 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
             _hasVideoStarted = true;
             widget.onVideoStart?.call();
           }
+          // Reiniciar flags de fin al volver a reproducir
+          _hasVideoEnded = false;
+          _didResetAfterEnd = false;
         }
       });
       _showControlsTemporarily();
@@ -675,8 +692,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
         setState(() {
           _isPlaying = false;
         });
-        debugPrint(
-            '[AdvancedVideoPlayer] ⏸️ Video pausado al volver a vista principal');
       }
 
       return;
@@ -822,8 +837,6 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
 
       if (!mounted) return;
       if (success) {
-        debugPrint(
-            'Picture-in-Picture activado con controles nativos (Android)');
       } else {
         debugPrint('No se pudo activar Picture-in-Picture');
       }
@@ -1010,23 +1023,16 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
               });
             },
             onPipStarted: () {
-              debugPrint(
-                  '[AdvancedVideoPlayer] ✅ PiP iniciado desde vista normal');
               setState(() {
                 _isInPictureInPictureMode = true;
               });
             },
             onPipStopped: () {
-              debugPrint(
-                  '[AdvancedVideoPlayer] ⏹️ PiP detenido desde vista normal');
               setState(() {
                 _isInPictureInPictureMode = false;
               });
             },
             onPipRestoreToFullscreen: () {
-              debugPrint(
-                  '[AdvancedVideoPlayer] 🎬 PiP cerrado - continuando en la MISMA vista');
-
               // NO navegar a ningún lado, el video continúa en la misma vista
               setState(() {
                 _isInPictureInPictureMode = false;
@@ -1050,23 +1056,16 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
                 }
               },
               onPipStarted: () {
-                debugPrint(
-                    '[AdvancedVideoPlayer] ✅ PiP iniciado desde vista normal (invisible)');
                 setState(() {
                   _isInPictureInPictureMode = true;
                 });
               },
               onPipStopped: () {
-                debugPrint(
-                    '[AdvancedVideoPlayer] ⏹️ PiP detenido desde vista normal (invisible)');
                 setState(() {
                   _isInPictureInPictureMode = false;
                 });
               },
               onPipRestoreToFullscreen: () {
-                debugPrint(
-                    '[AdvancedVideoPlayer] 🎬 PiP cerrado - continuando en la MISMA vista (invisible)');
-
                 // NO navegar a ningún lado, el video continúa en la misma vista
                 setState(() {
                   _isInPictureInPictureMode = false;
@@ -1229,23 +1228,16 @@ class _AdvancedVideoPlayerState extends State<AdvancedVideoPlayer>
               }
             },
             onPipStarted: () {
-              debugPrint(
-                  '[AdvancedVideoPlayer] ✅ PiP iniciado - actualizando estado');
               setState(() {
                 _isInPictureInPictureMode = true;
               });
             },
             onPipStopped: () {
-              debugPrint(
-                  '[AdvancedVideoPlayer] ⏹️ PiP detenido - actualizando estado');
               setState(() {
                 _isInPictureInPictureMode = false;
               });
             },
             onPipRestoreToFullscreen: () {
-              debugPrint(
-                  '[AdvancedVideoPlayer] 🎬 PiP cerrado en fullscreen - continuando en la MISMA vista');
-
               // NO navegar a ningún lado, solo cerrar el PiP y continuar
               setState(() {
                 _isInPictureInPictureMode = false;
@@ -2178,26 +2170,33 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
         final duration = await _controller!.getDuration();
         final buffering = await _controller!.isBuffering();
 
-        // Verificar si el video terminó (con margen de tolerancia de 500ms)
-        final isNearEnd = duration > 0 && (position >= duration - 0.5);
+        // Marcadores de fin
+        final remaining = duration - position;
+        final isActualEnd = duration > 0 && (remaining <= 0.5);
+        final isTenSecondsBeforeEnd = duration > 0 && (remaining <= 10.0);
 
-        if (isNearEnd && _isPlaying && !_hasVideoEnded) {
-          if (mounted) {
-            setState(() {
-              _isPlaying = false;
-              _hasVideoEnded = true;
-            });
-            debugPrint(
-                '[NativeFullscreenPage] 🏁 Video ended - Position: ${position.toStringAsFixed(1)}s, Duration: ${duration.toStringAsFixed(1)}s');
-            widget.onVideoEnd?.call();
+        // Final real: resetear a 00:00 y pausar (no dispara callback aquí)
+        if (isActualEnd) {
+          if (_controller != null) {
+            await _controller!.seek(0.0);
+            await _controller!.pause();
+            if (mounted) {
+              setState(() {
+                _currentPosition = 0.0;
+                _isPlaying = false;
+              });
+            }
           }
+        } else if (isTenSecondsBeforeEnd && !_hasVideoEnded && _isPlaying) {
+          // 10s antes: disparar callback solo una vez
+          _hasVideoEnded = true;
+          widget.onVideoEnd?.call();
         }
 
         // Detectar si el video está reproduciéndose y pasó de los primeros segundos
         if (_isPlaying && !_hasVideoStarted && position >= 1.0) {
           _hasVideoStarted = true;
-          debugPrint(
-              '[NativeFullscreenPage] ✨ Video started for first time (auto-detected at ${position.toStringAsFixed(1)}s)');
+
           widget.onVideoStart?.call();
         }
 
@@ -2297,8 +2296,6 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                     setState(() {
                       _isPlaying = playing;
                     });
-                    debugPrint(
-                        '[NativeFullscreenPage] 🎵 Estado de reproducción sincronizado: $_isPlaying');
                   }
                 } catch (e) {
                   debugPrint(
@@ -2316,11 +2313,7 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                   });
                 }
               },
-              onPipStarted: () {
-                debugPrint('[NativeFullscreenPage] ✅ PiP iniciado');
-              },
               onPipStopped: () async {
-                debugPrint('[NativeFullscreenPage] ⏹️ PiP detenido');
                 // Sincronizar el estado de reproducción después de cerrar PIP
                 if (_controller != null) {
                   try {
@@ -2329,18 +2322,14 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                       setState(() {
                         _isPlaying = playing;
                       });
-                      debugPrint(
-                          '[NativeFullscreenPage] 🎵 Estado sincronizado después de PIP: $_isPlaying');
                     }
                   } catch (e) {
                     debugPrint(
-                        '[NativeFullscreenPage] ⚠️ Error al sincronizar después de PIP: $e');
+                        '[NativeFullscreenPage]  Error al sincronizar después de PIP: $e');
                   }
                 }
               },
               onPipRestoreToFullscreen: () async {
-                debugPrint(
-                    '[NativeFullscreenPage] 🎬 Restaurando a fullscreen desde PiP');
                 // Ya estamos en fullscreen, no necesitamos navegar
                 // Pero sí necesitamos sincronizar el estado de reproducción
                 if (_controller != null) {
@@ -2350,12 +2339,10 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                       setState(() {
                         _isPlaying = playing;
                       });
-                      debugPrint(
-                          '[NativeFullscreenPage] 🎵 Estado sincronizado al restaurar desde PIP: $_isPlaying');
                     }
                   } catch (e) {
                     debugPrint(
-                        '[NativeFullscreenPage] ⚠️ Error al sincronizar al restaurar desde PIP: $e');
+                        '[NativeFullscreenPage]  Error al sincronizar al restaurar desde PIP: $e');
                   }
                 }
               },
@@ -2539,6 +2526,8 @@ class _NativeFullscreenPageState extends State<_NativeFullscreenPage> {
                                     _hasVideoStarted = true;
                                     widget.onVideoStart?.call();
                                   }
+                                  // Reiniciar flag de fin al volver a reproducir
+                                  _hasVideoEnded = false;
                                 }
                                 setState(() {
                                   _isPlaying = !_isPlaying;

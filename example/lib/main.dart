@@ -162,7 +162,7 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
   /// - HLS (.m3u8) - Streaming adaptativo
   /// - DASH - Streaming adaptativo (limitado)
   final String _videoUrl =
-      'https://player.vimeo.com/external/510520873.m3u8?s=2651efc084fb2c4ad19925e2b48044cdecdbebaf&oauth2_token_id=1795373245';
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
   @override
   void initState() {
@@ -295,7 +295,7 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                 /// - Proporciona contexto visual del contenido
                 /// - Mejora la UX en conexiones lentas
                 previewImageUrl:
-                    'https://i.vimeocdn.com/video/1056828543-d9012e5ba116e7e91acebb15be11a7845a638852472b3791d05e214638a0091e-d?region=us',
+                    'https://i1.sndcdn.com/artworks-000005011281-9brqv2-t1080x1080.jpg',
 
                 // ────────────────────────────────────────────────────────
                 // CALLBACKS Y EVENTOS
@@ -312,6 +312,33 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('🏁 ¡Video terminado!'),
+                      backgroundColor: Color(0xFF6366F1),
+                    ),
+                  );
+                },
+                onVideoStart: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      duration: Duration(seconds: 1),
+                      content: Text('Video iniciado'),
+                      backgroundColor: Color(0xFF6366F1),
+                    ),
+                  );
+                },
+                onVideoPause: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      duration: Duration(seconds: 1),
+                      content: Text('Video pausado'),
+                      backgroundColor: Color(0xFF6366F1),
+                    ),
+                  );
+                },
+                onVideoPlay: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      duration: Duration(seconds: 1),
+                      content: Text('Video reproducido'),
                       backgroundColor: Color(0xFF6366F1),
                     ),
                   );
@@ -341,11 +368,11 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
 
                 /// Color principal usado en el reproductor.
                 /// Aplica a: botones principales, barra de progreso (relleno)
-                primaryColor: const Color.fromARGB(255, 255, 81, 0),
+                primaryColor: const Color.fromARGB(255, 76, 0, 95),
 
                 /// Color secundario usado en el reproductor.
                 /// Aplica a: gradientes, efectos hover, elementos secundarios
-                secondaryColor: const Color(0xFFED8C60),
+                secondaryColor: const Color.fromARGB(101, 76, 0, 95),
 
                 // ────────────────────────────────────────────────────────
                 // CONFIGURACIÓN DE CONTROLES
@@ -404,34 +431,6 @@ class _VideoPlayerDemoState extends State<VideoPlayerDemo> {
                 ///
                 /// Se recomienda habilitar para aplicaciones iOS.
                 useNativePlayerOnIOS: true,
-
-                onVideoStart: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      duration: Duration(seconds: 1),
-                      content: Text('Video iniciado'),
-                      backgroundColor: Color(0xFF6366F1),
-                    ),
-                  );
-                },
-                onVideoPause: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      duration: Duration(seconds: 1),
-                      content: Text('Video pausado'),
-                      backgroundColor: Color(0xFF6366F1),
-                    ),
-                  );
-                },
-                onVideoPlay: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      duration: Duration(seconds: 1),
-                      content: Text('Video reproducido'),
-                      backgroundColor: Color(0xFF6366F1),
-                    ),
-                  );
-                },
               ),
             ),
 
